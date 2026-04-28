@@ -1,0 +1,3544 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<!-- SECURITY: Content-Security-Policy — restricts resources to trusted origins only -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'none';
+  script-src 'unsafe-inline';
+  style-src 'unsafe-inline' https://fonts.googleapis.com;
+  font-src https://fonts.gstatic.com;
+  connect-src https://script.google.com https://script.googleusercontent.com;
+  img-src 'self' data: blob: https://www.omarsa.com.ec;
+  media-src data: blob:;
+  frame-ancestors 'none';
+  base-uri 'none';
+  form-action 'none';">
+<!-- SECURITY: Prevent MIME sniffing -->
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<title>Fichas Larvicultura</title>
+<link rel="icon" type="image/png" href="https://www.omarsa.com.ec/wp-content/themes/omarsa_site/images/logo-omarsa.png">
+<link rel="apple-touch-icon" href="https://www.omarsa.com.ec/wp-content/themes/omarsa_site/images/logo-omarsa.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Fichas Larvi">
+<meta name="theme-color" content="#09192e">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Syne:wght@700;800&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#09192e; --bg2:#0e2040; --bg3:#152b50;
+  --teal:#00bfa5; --teal2:#00e5cc; --tealp:#e0f7f5;
+  --amber:#f59e0b; --green:#22c55e; --red:#f43f5e;
+  --card:#fff; --surf:#f1f5f9;
+  --bdr:#e2e8f0; --bdr2:#cbd5e1;
+  --tx:#0f172a; --tx2:#475569; --tx3:#94a3b8;
+  --mono:"IBM Plex Mono",monospace;
+  --sans:"IBM Plex Sans",sans-serif;
+  --syne:"Syne",sans-serif;
+  --tr:.15s ease;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;width:100%;max-width:100%;font-family:var(--sans);font-size:13px;color:var(--tx)}
+body{overflow:hidden;display:flex;flex-direction:column;background:var(--surf);
+  -webkit-overflow-scrolling:touch;overscroll-behavior:none}
+
+/* ─── LOGIN ─────────────────────────────── */
+#login{
+  position:fixed;inset:0;background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  z-index:1000;transition:opacity .35s ease;gap:0;
+  overflow-y:auto;overflow-x:hidden;
+  padding:20px 16px 28px;
+}
+#login.gone{opacity:0;pointer-events:none}
+.lg-logo-wrap{
+  display:flex;align-items:center;justify-content:center;
+  margin-bottom:6px;min-height:44px;
+}
+.lg-logo-img{
+  max-height:54px;max-width:200px;object-fit:contain;
+  /* Slight glow to stand out on dark background */
+  filter:drop-shadow(0 0 8px rgba(0,191,165,.35));
+}
+/* Shown when no image is loaded — styled placeholder text */
+.lg-logo-text{
+  font-family:var(--syne);font-size:13px;font-weight:800;
+  letter-spacing:2px;color:var(--teal2);text-transform:uppercase;
+  opacity:.7;
+}
+.lg-title{font-family:var(--syne);font-size:24px;font-weight:800;color:#fff;letter-spacing:-.5px;text-align:center;margin-bottom:3px}
+.lg-sub{font-size:10px;color:var(--tx3);letter-spacing:.8px;text-transform:uppercase;margin-bottom:14px;text-align:center}
+
+.lg-card{
+  background:var(--bg2);border:1px solid rgba(0,191,165,.14);border-radius:20px;
+  padding:22px 26px 26px;width:min(520px,96vw);
+  box-shadow:0 20px 60px rgba(0,0,0,.55),0 0 0 1px rgba(0,191,165,.06);
+}
+.lg-section{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.9px;color:var(--teal);margin-bottom:8px;display:block}
+
+/* ─── MODULE GRID (M01–M10 + CIO + Lab) ─── */
+.mod-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}
+.mc{
+  aspect-ratio:1;border-radius:11px;background:var(--bg3);
+  border:2px solid rgba(255,255,255,.05);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;cursor:pointer;
+  transition:var(--tr);position:relative;user-select:none;
+}
+.mc:hover{border-color:rgba(0,191,165,.35);transform:translateY(-2px)}
+.mc.sel{border-color:var(--teal);background:rgba(0,191,165,.1);box-shadow:0 0 0 3px rgba(0,191,165,.2)}
+.mc-num{font-family:var(--syne);font-size:16px;font-weight:800;color:#fff;line-height:1}
+.mc-lbl{font-size:8px;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.mc-dot{position:absolute;top:6px;right:6px;width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.1)}
+.mc.pend .mc-dot{background:var(--amber)} .mc.sync .mc-dot{background:var(--green)}
+/* CIO tile — amber accent */
+.mc.mc-cio{background:rgba(245,158,11,.07);border-color:rgba(245,158,11,.25)}
+.mc.mc-cio:hover{border-color:rgba(245,158,11,.65)}
+.mc.mc-cio.sel{border-color:var(--amber);background:rgba(245,158,11,.18);box-shadow:0 0 0 3px rgba(245,158,11,.2)}
+.mc.mc-cio .mc-num{color:var(--amber);font-size:11px;letter-spacing:.5px}
+.mc.mc-cio .mc-lbl{color:rgba(245,158,11,.6)}
+/* Lab. Algas tile — emerald accent */
+.mc.mc-lab{background:rgba(34,197,94,.06);border-color:rgba(34,197,94,.22)}
+.mc.mc-lab:hover{border-color:rgba(34,197,94,.6)}
+.mc.mc-lab.sel{border-color:var(--green);background:rgba(34,197,94,.15);box-shadow:0 0 0 3px rgba(34,197,94,.18)}
+.mc.mc-lab .mc-num{color:var(--green);font-size:18px}
+.mc.mc-lab .mc-lbl{color:rgba(34,197,94,.6)}
+
+.pin-row{display:flex;align-items:center;gap:9px;margin-bottom:6px}
+.pin-in{
+  flex:1;background:var(--bg3);border:1.5px solid rgba(255,255,255,.09);
+  border-radius:9px;padding:10px 14px;font-family:var(--mono);font-size:15px;
+  color:#fff;outline:none;transition:var(--tr);letter-spacing:4px;
+}
+.pin-in:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,191,165,.14)}
+.pin-in.shake{animation:sh .35s ease}
+@keyframes sh{0%,100%{transform:none}20%{transform:translateX(-6px)}60%{transform:translateX(6px)}}
+.pin-note{font-size:10px;color:var(--tx3);margin-bottom:14px}
+
+.btn-enter{
+  width:100%;padding:12px;border-radius:11px;
+  background:linear-gradient(135deg,var(--teal),var(--teal2));
+  color:#09192e;font-family:var(--syne);font-size:14px;font-weight:800;
+  border:none;cursor:pointer;letter-spacing:.3px;
+  box-shadow:0 4px 18px rgba(0,191,165,.4);transition:var(--tr);
+}
+.btn-enter:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 7px 26px rgba(0,191,165,.5)}
+.btn-enter:disabled{opacity:.35;cursor:not-allowed;transform:none}
+
+/* ─── APP ────────────────────────────────── */
+#app{display:none;flex-direction:column;height:100%;width:100%;max-width:100%;overflow:hidden}
+#app.on{display:flex}
+
+.topbar{
+  background:var(--bg);border-bottom:2px solid var(--teal);
+  display:flex;align-items:center;padding:0 18px;height:50px;flex-shrink:0;gap:10px;
+}
+.tb-brand{font-family:var(--syne);font-size:14px;font-weight:800;color:#fff;white-space:nowrap}
+.tb-badge{
+  background:rgba(0,191,165,.15);border:1px solid rgba(0,191,165,.3);
+  color:var(--teal2);border-radius:20px;padding:3px 12px;
+  font-family:var(--mono);font-size:12px;font-weight:600;white-space:nowrap;
+}
+.tb-badge.cio{
+  background:rgba(245,158,11,.18);border-color:rgba(245,158,11,.45);
+  color:var(--amber);
+}
+.tb-badge.lab{
+  background:rgba(34,197,94,.18);border-color:rgba(34,197,94,.45);
+  color:var(--green);
+}
+.tb-r{display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap}
+.spill-bar{
+  display:flex;align-items:center;gap:7px;
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);
+  border-radius:20px;padding:5px 12px;font-size:11px;color:rgba(255,255,255,.65);
+  white-space:nowrap;
+}
+.sdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.sdot.idle{background:#475569} .sdot.pend{background:var(--amber);animation:bl 1.4s infinite}
+.sdot.ok{background:var(--green)} .sdot.err{background:var(--red)}
+@keyframes bl{0%,100%{opacity:1}50%{opacity:.2}}
+.tbtn{
+  background:rgba(255,255,255,.09);color:#fff;border:1px solid rgba(255,255,255,.13);
+  border-radius:8px;padding:5px 11px;font-family:var(--sans);font-size:11px;font-weight:600;
+  cursor:pointer;transition:var(--tr);white-space:nowrap;
+}
+.tbtn:hover{background:rgba(255,255,255,.17)}
+
+/* ─── FICHA TABS ─────────────────────────── */
+.ftabs{
+  background:var(--card);border-bottom:1px solid var(--bdr);
+  display:flex;padding:0 20px;gap:2px;flex-shrink:0;overflow-x:auto;
+}
+.ftab{
+  padding:11px 15px;border-bottom:2.5px solid transparent;
+  font-size:12px;font-weight:600;color:var(--tx3);cursor:pointer;
+  background:none;border-left:none;border-right:none;border-top:none;
+  font-family:var(--sans);transition:var(--tr);display:flex;align-items:center;gap:6px;
+  white-space:nowrap;flex-shrink:0;
+}
+.ftab:hover{color:var(--tx);border-bottom-color:var(--bdr2)}
+.ftab.on{color:var(--teal);border-bottom-color:var(--teal)}
+.fdot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.fdot.ok{background:var(--green)} .fdot.pend{background:var(--amber)} .fdot.mt{background:#cbd5e1}
+
+/* ─── MAIN ───────────────────────────────── */
+.main{flex:1;overflow-y:auto;background:var(--surf)}
+.fp{display:none;padding:16px 16px 40px}
+.fp.on{display:block}
+
+/* ─── CARD ───────────────────────────────── */
+.fc{background:var(--card);border:1px solid var(--bdr);border-radius:13px;box-shadow:0 2px 10px rgba(0,0,0,.06);overflow:hidden;margin-bottom:14px}
+.fc-h{background:linear-gradient(135deg,var(--bg),var(--bg3));color:#fff;padding:10px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.fc-t{font-size:13px;font-weight:700;letter-spacing:.2px}
+.fc-b{padding:14px 16px}
+
+/* ─── META ───────────────────────────────── */
+.meta{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:9px;margin-bottom:14px}
+.mf{display:flex;flex-direction:column;gap:3px}
+.mf label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#0f766e}
+.mf input,.mf select{
+  border:1.5px solid var(--bdr);border-radius:6px;padding:7px 10px;
+  font-family:var(--sans);font-size:12px;color:var(--tx);background:var(--surf);outline:none;transition:var(--tr);
+}
+.mf input:focus,.mf select:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,191,165,.11)}
+.mf input[readonly]{background:#f8fafc;color:var(--tx3)}
+
+/* ─── TABLE ──────────────────────────────── */
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;margin:0 -2px}
+.ft{width:100%;border-collapse:collapse;font-size:11.5px}
+.ft thead tr{background:linear-gradient(135deg,var(--bg),#1a3355)}
+.ft thead th{
+  color:rgba(255,255,255,.82);padding:6px 8px;font-weight:600;font-size:10px;
+  text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;text-align:center;
+  border:1px solid rgba(255,255,255,.06);
+}
+.ft thead th.tqh{background:rgba(0,0,0,.28);min-width:40px}
+.thg{background:rgba(0,191,165,.2)!important;color:#5eead4!important;font-size:9px!important;letter-spacing:.7px!important}
+.thg2{background:rgba(99,102,241,.2)!important;color:#c4b5fd!important;font-size:9px!important}
+.thg3{background:rgba(34,197,94,.16)!important;color:#86efac!important;font-size:9px!important}
+.thgt{background:rgba(0,191,165,.15)!important;color:#0f766e!important}
+.ft tbody tr{border-bottom:1px solid var(--bdr);transition:background .1s}
+.ft tbody tr:hover{background:#f0fdf9}
+.ft tbody td{padding:2px 3px;text-align:center;vertical-align:middle}
+.tqc{font-family:var(--mono);font-size:12px;font-weight:700;background:var(--bg)!important;color:#fff;width:40px;min-width:40px}
+/* Specificity (0,3,1) beats .ft input[type=text] (0,2,1) */
+.ft td.tqc .tqc-edit{
+  width:62px;font-weight:700;text-align:center;
+  background:rgba(255,255,255,.92)!important;color:#09192e!important;
+  border:1.5px dashed var(--teal);border-radius:3px;
+  font-size:10px;padding:2px 3px;font-family:var(--mono);
+  min-width:62px;
+}
+/* Specificity (0,4,1) beats .ft input:focus (0,2,1) */
+.ft td.tqc .tqc-edit:focus{
+  background:#fff;color:#09192e;border-color:var(--teal2);
+  box-shadow:0 0 0 2px rgba(0,191,165,.25);outline:none;
+}
+.ft input[type=number],.ft input[type=text]{
+  border:1.5px solid transparent;border-radius:4px;padding:4px 5px;
+  font-family:var(--mono);font-size:11.5px;color:var(--tx);
+  background:transparent;outline:none;width:100%;min-width:52px;
+  text-align:center;transition:border-color .1s;
+}
+.ft input:focus{border-color:var(--teal);background:#fff;box-shadow:0 0 0 2px rgba(0,191,165,.14)}
+.pinp{min-width:40px!important;font-size:10.5px!important}
+/* Alert: OD/°C out of range */
+.pinp-alert{background:rgba(244,63,94,.15)!important;border-color:var(--red)!important;color:#be123c!important;font-weight:700!important}
+.tr-tot td{background:#f0fdf9;font-weight:700;font-family:var(--mono);font-size:11px;color:#065f46;padding:5px 4px}
+
+/* ─── FOOT FIELDS ────────────────────────── */
+.ffoot{display:flex;flex-wrap:wrap;gap:10px;margin-top:13px;align-items:flex-end}
+.ff{display:flex;flex-direction:column;gap:3px;flex:1;min-width:170px}
+.ff label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--tx3)}
+.ff input,.ff textarea{border:1.5px solid var(--bdr);border-radius:6px;padding:7px 10px;font-family:var(--sans);font-size:12px;color:var(--tx);background:var(--surf);outline:none;transition:var(--tr)}
+.ff input:focus,.ff textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,191,165,.11)}
+.ff textarea{resize:vertical;min-height:52px}
+
+/* ─── SAVE AREA ──────────────────────────── */
+.sa{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-top:13px;padding:11px 14px;border-radius:10px;background:var(--surf);border:1px solid var(--bdr)}
+.sa-info{font-size:11px;color:var(--tx3);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sa-btns{display:flex;gap:8px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 16px;border-radius:20px;font-family:var(--sans);font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid;transition:var(--tr);white-space:nowrap}
+.bp{background:linear-gradient(135deg,var(--teal),var(--teal2));color:#09192e;border-color:var(--teal);box-shadow:0 3px 12px rgba(0,191,165,.3)}
+.bp:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(0,191,165,.4)}
+.bs{background:transparent;color:#0f766e;border-color:rgba(0,191,165,.35)}
+.bs:hover{background:var(--tealp)}
+.bo{background:transparent;color:var(--tx2);border-color:var(--bdr2)}
+.bo:hover{background:#f8fafc}
+.bd{background:transparent;color:var(--red);border-color:rgba(244,63,94,.28)}
+.bd:hover{background:#fff1f2}
+.brec{background:transparent;color:#7c3aed;border-color:rgba(124,58,237,.3)}
+.brec:hover:not(:disabled){background:#f5f3ff}
+
+/* ─── STATUS PILL ────────────────────────── */
+.ssp{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:11px;font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase}
+.ssp-ok{background:#dcfce7;color:#166534} .ssp-pend{background:#fef3c7;color:#92400e}
+.ssp-mt{background:var(--surf);color:var(--tx3);border:1px solid var(--bdr)}
+
+/* ─── TOAST ──────────────────────────────── */
+.ta{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:9999}
+.toast{background:var(--bg);color:#fff;padding:10px 16px;border-radius:10px;font-size:12px;font-weight:500;box-shadow:0 8px 28px rgba(0,0,0,.4);display:flex;align-items:center;gap:8px;min-width:230px;animation:ti .22s ease;border-left:3px solid var(--teal)}
+.toast.ok{border-left-color:var(--green)} .toast.err{border-left-color:var(--red)} .toast.warn{border-left-color:var(--amber)}
+@keyframes ti{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
+
+/* ─── CFG MODAL ──────────────────────────── */
+.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:8000;align-items:center;justify-content:center;padding:20px}
+.ov.open{display:flex}
+.modal{background:var(--card);border-radius:16px;max-width:600px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.4);overflow:hidden;animation:mi .2s ease}
+@keyframes mi{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:none}}
+.mh{background:linear-gradient(135deg,var(--bg),var(--bg3));color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between}
+.mt{font-size:14px;font-weight:700;font-family:var(--syne)}
+.mb{padding:20px;display:flex;flex-direction:column;gap:12px;max-height:72vh;overflow-y:auto}
+.cf{display:flex;flex-direction:column;gap:4px}
+.cf label{font-size:11px;font-weight:700;color:var(--tx2);text-transform:uppercase;letter-spacing:.5px}
+.cf input,.cf textarea{border:1.5px solid var(--bdr);border-radius:8px;padding:8px 11px;font-family:var(--mono);font-size:11px;color:var(--tx);outline:none;transition:var(--tr);background:var(--surf)}
+.cf input:focus,.cf textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,191,165,.1)}
+.cf textarea{resize:vertical;min-height:110px;font-size:9.5px;line-height:1.6}
+.cn{font-size:10.5px;color:var(--tx2);line-height:1.75;padding:10px 13px;background:#f8fafc;border-radius:8px;border-left:3px solid var(--teal)}
+.mf2{padding:12px 20px;background:var(--surf);border-top:1px solid var(--bdr);display:flex;gap:8px;justify-content:flex-end}
+
+/* ─── SCROLLBAR ──────────────────────────── */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:#f1f5f9}
+::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+
+/* ─── PDF BUTTON ─────────────────────────── */
+.bpdf{background:linear-gradient(135deg,#6366f1,#818cf8);color:#fff;font-size:12px;font-weight:700;border-color:rgba(99,102,241,.4);box-shadow:0 2px 8px rgba(99,102,241,.25)}
+.bpdf:hover{transform:translateY(-1px);box-shadow:0 5px 16px rgba(99,102,241,.45);background:linear-gradient(135deg,#4f46e5,#7c3aed)}
+
+
+/* ─── RESPONSIVE: Wide login — 6 cols on ≥500px ── */
+@media (min-width:500px){
+  .mod-grid{grid-template-columns:repeat(6,1fr);gap:7px}
+}
+
+/* ─── RESPONSIVE / TABLET ────────────────── */
+@media (max-width:768px){
+  .topbar{padding:0 12px;height:auto;min-height:50px;flex-wrap:wrap;gap:6px;padding-top:6px;padding-bottom:6px}
+  .tb-brand{font-size:13px}
+  .tb-r{width:100%;gap:6px;justify-content:flex-end}
+  .spill-bar{font-size:10px;padding:4px 9px}
+  .tbtn{font-size:10px;padding:4px 9px}
+  .fp{padding:10px 10px 40px}
+  .fc-b{padding:10px 10px}
+  .meta{grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:7px}
+  .sa{flex-direction:column;align-items:flex-start}
+  .sa-btns{width:100%}
+  .btn{flex:1;justify-content:center;padding:8px 10px;font-size:11px}
+  .ffoot{flex-direction:column}
+  .ff{min-width:100%}
+  .lg-card{padding:16px 14px}
+  .mod-grid{grid-template-columns:repeat(4,1fr);gap:6px}
+}
+@media (max-width:480px){
+  .lg-title{font-size:22px}
+  .lg-sub{font-size:10px}
+  .ftab{padding:9px 10px;font-size:11px}
+  .mod-grid{grid-template-columns:repeat(3,1fr)}
+}
+
+/* ─── ALGAS FORM HELPERS ─────────────────── */
+.alg-row{display:none} /* toggled via JS */
+.alg-hint{font-size:10px;color:var(--tx3);margin-top:2px;font-style:italic}
+.mf select{
+  border:1.5px solid var(--bdr);border-radius:6px;padding:7px 10px;
+  font-family:var(--sans);font-size:12px;color:var(--tx);background:var(--surf);
+  outline:none;transition:var(--tr);
+}
+.mf select:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,191,165,.11)}
+
+
+/* ─── FOTOS ──────────────────────────────── */
+.foto-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.foto-capbtn{
+  display:inline-flex;align-items:center;gap:8px;padding:10px 20px;
+  border-radius:22px;background:linear-gradient(135deg,#0369a1,#0ea5e9);
+  color:#fff;font-size:13px;font-weight:700;border:none;cursor:pointer;
+  box-shadow:0 3px 14px rgba(3,105,161,.38);transition:var(--tr);
+}
+.foto-capbtn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(3,105,161,.48)}
+.foto-cnt{font-size:11px;color:var(--tx3);background:var(--surf);
+  border:1px solid var(--bdr);border-radius:8px;padding:5px 12px;white-space:nowrap}
+.foto-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(188px,1fr));gap:14px;
+}
+.foto-card{
+  background:var(--card);border:1px solid var(--bdr);border-radius:12px;
+  overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.07);
+  display:flex;flex-direction:column;transition:var(--tr);
+}
+.foto-card:hover{box-shadow:0 6px 20px rgba(0,0,0,.13);transform:translateY(-2px)}
+.foto-thumb{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;
+  cursor:pointer;background:#f1f5f9}
+.foto-vid-thumb{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;
+  cursor:pointer;background:#0f172a;border:none;outline:none}
+.foto-vid-wrap{position:relative}
+.foto-vid-badge{
+  position:absolute;top:6px;left:6px;background:rgba(0,0,0,.7);
+  color:#fff;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;
+  display:flex;align-items:center;gap:3px;pointer-events:none;
+}
+.foto-vid-play{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  pointer-events:none;
+}
+.foto-vid-play::after{
+  content:'▶';font-size:28px;color:#fff;background:rgba(0,0,0,.5);
+  width:48px;height:48px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;padding-left:3px;
+}
+.foto-vidbtn{
+  display:inline-flex;align-items:center;gap:8px;padding:10px 20px;
+  border-radius:22px;background:linear-gradient(135deg,#7c3aed,#a78bfa);
+  color:#fff;font-size:13px;font-weight:700;border:none;cursor:pointer;
+  box-shadow:0 3px 14px rgba(124,58,237,.38);transition:var(--tr);
+}
+.foto-vidbtn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(124,58,237,.48)}
+.foto-info{padding:9px 11px;display:flex;flex-direction:column;gap:6px}
+.foto-ts{font-size:10px;color:var(--tx3);font-family:var(--mono)}
+.foto-nota{
+  font-size:11.5px;border:1.5px solid var(--bdr);border-radius:6px;
+  padding:5px 8px;font-family:var(--sans);color:var(--tx);resize:none;
+  outline:none;min-height:36px;transition:border-color .15s;background:var(--surf);
+}
+.foto-nota:focus{border-color:var(--teal);background:#fff}
+.foto-delbtn{
+  display:flex;align-items:center;justify-content:center;gap:5px;
+  padding:6px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;
+  background:transparent;color:var(--red);border:1px solid rgba(244,63,94,.25);
+  font-family:var(--sans);transition:var(--tr);
+}
+.foto-delbtn:hover{background:#fff1f2}
+.foto-ttl-bar{font-size:10px;font-weight:700;color:var(--tx3);letter-spacing:.5px;
+  text-transform:uppercase;margin-bottom:1px}
+.foto-empty{
+  text-align:center;padding:52px 20px;color:var(--tx3);
+  border:2px dashed var(--bdr2);border-radius:14px;font-size:12px;
+}
+.foto-empty-ico{font-size:44px;display:block;opacity:.4;margin-bottom:12px}
+/* Lightbox */
+#foto-lb{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);
+  z-index:9500;align-items:center;justify-content:center;cursor:zoom-out;
+}
+#foto-lb.on{display:flex}
+#foto-lb img{max-width:94vw;max-height:90vh;border-radius:8px;
+  box-shadow:0 0 80px rgba(0,0,0,.6);pointer-events:none}
+#foto-lb-x{
+  position:fixed;top:18px;right:20px;width:40px;height:40px;border-radius:50%;
+  background:rgba(255,255,255,.18);border:none;color:#fff;font-size:22px;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:background .15s;
+}
+#foto-lb-x:hover{background:rgba(255,255,255,.32)}
+@media(max-width:768px){
+  .foto-grid{grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px}
+  .foto-capbtn{font-size:12px;padding:9px 16px}
+}
+
+
+/* ─── BOTÓN "NUEVO REGISTRO" (cal/plg/poblacion) ── */
+.bnuevo{background:transparent;color:#0369a1;border-color:rgba(3,105,161,.4);font-weight:700}
+.bnuevo:hover{background:#f0f9ff;border-color:#0369a1}
+.bnuevo-on{
+  background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#78350f;
+  border-color:#f59e0b;box-shadow:0 2px 10px rgba(245,158,11,.35);font-weight:800;
+  animation:bnpulse 2.4s infinite;
+}
+.bnuevo-on:hover{transform:translateY(-1px);box-shadow:0 5px 16px rgba(245,158,11,.5)}
+@keyframes bnpulse{0%,100%{box-shadow:0 2px 10px rgba(245,158,11,.35)}50%{box-shadow:0 2px 14px rgba(245,158,11,.6)}}
+/* Banner visible dentro de la ficha cuando "Nuevo registro" está activo */
+.nuevoreg-banner{
+  background:linear-gradient(90deg,#fef3c7,#fde68a);border:1.5px solid #f59e0b;
+  border-radius:9px;padding:8px 14px;margin-bottom:10px;font-size:12px;
+  color:#78350f;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+}
+.nuevoreg-banner b{font-weight:800}
+.nuevoreg-banner .nrb-tag{
+  background:#f59e0b;color:#fff;font-family:var(--mono);font-size:10.5px;
+  font-weight:800;padding:2px 9px;border-radius:9px;letter-spacing:.5px;
+}
+
+/* ─── HISTORIAL LAB. ALGAS ──────────────── */
+.alg-hist{
+  background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;
+  padding:12px 14px;margin:10px 0 14px;
+}
+.alg-hist-h{
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;
+  margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid rgba(34,197,94,.3);
+}
+.alg-hist-h-l{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;color:#065f46}
+.alg-hist-h-l .alg-hist-cnt{
+  background:#16a34a;color:#fff;font-family:var(--mono);font-size:11px;
+  padding:2px 8px;border-radius:9px;font-weight:700;letter-spacing:.4px;
+}
+.alg-hist-list{display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto}
+.alg-hist-item{
+  background:#fff;border:1px solid #d1fae5;border-radius:8px;
+  padding:7px 10px;display:flex;align-items:flex-start;gap:10px;
+}
+.alg-hist-num{
+  background:#16a34a;color:#fff;font-family:var(--mono);
+  font-size:10.5px;font-weight:800;padding:3px 8px;border-radius:8px;
+  min-width:30px;text-align:center;flex-shrink:0;
+}
+.alg-hist-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.alg-hist-ts{font-family:var(--mono);font-size:9.5px;color:#0f766e;font-weight:600}
+.alg-hist-fields{
+  display:flex;flex-wrap:wrap;gap:2px 12px;
+  font-size:11px;color:#1e3a2f;line-height:1.55;
+}
+.alg-hist-fields span b{font-weight:800;color:#065f46;margin-right:2px}
+.alg-hist-del{
+  background:transparent;border:1px solid rgba(244,63,94,.3);color:var(--red);
+  font-size:13px;cursor:pointer;padding:4px 9px;border-radius:7px;
+  flex-shrink:0;align-self:flex-start;transition:var(--tr);
+}
+.alg-hist-del:hover{background:#fff1f2;border-color:var(--red)}
+.alg-add-btn{
+  display:inline-flex;align-items:center;gap:6px;padding:8px 16px;
+  border-radius:20px;background:linear-gradient(135deg,#16a34a,#22c55e);
+  color:#fff;border:1.5px solid #16a34a;font-size:12px;font-weight:700;cursor:pointer;
+  box-shadow:0 2px 10px rgba(34,197,94,.3);transition:var(--tr);white-space:nowrap;
+}
+.alg-add-btn:hover{transform:translateY(-1px);box-shadow:0 5px 16px rgba(34,197,94,.45)}
+.alg-hist-empty{
+  background:#fff;border:1px dashed #86efac;border-radius:8px;padding:14px;
+  text-align:center;font-size:11px;color:#0f766e;
+}
+@media(max-width:768px){
+  .alg-hist-fields{font-size:10px;gap:2px 8px}
+  .alg-hist-item{padding:6px 8px}
+}
+
+/* ─── NOTA DEL MÓDULO ───────────────────── */
+.note-wrap{
+  background:var(--bg);border-top:2px solid rgba(0,191,165,.18);
+  padding:10px 18px;flex-shrink:0;display:flex;align-items:flex-start;gap:10px;
+}
+.note-ico{font-size:16px;margin-top:2px;flex-shrink:0}
+.note-inner{flex:1;display:flex;flex-direction:column;gap:5px;min-width:0}
+.note-lbl{font-size:9px;font-weight:800;text-transform:uppercase;
+  letter-spacing:.8px;color:rgba(0,229,204,.6)}
+.note-ta{
+  width:100%;background:rgba(255,255,255,.07);border:1.5px solid rgba(255,255,255,.11);
+  border-radius:8px;padding:7px 10px;color:#fff;font-family:var(--sans);font-size:12px;
+  resize:none;outline:none;line-height:1.5;transition:border-color .15s;
+  min-height:36px;max-height:90px;overflow-y:auto;
+}
+.note-ta:focus{border-color:var(--teal);background:rgba(255,255,255,.1)}
+.note-ta::placeholder{color:rgba(255,255,255,.3)}
+.note-btns{display:flex;gap:6px;align-items:center}
+.note-clear{
+  font-size:10px;font-weight:700;padding:4px 10px;border-radius:8px;
+  background:rgba(244,63,94,.15);color:rgba(244,63,94,.8);
+  border:1px solid rgba(244,63,94,.25);cursor:pointer;transition:var(--tr);
+  font-family:var(--sans);white-space:nowrap;
+}
+.note-clear:hover{background:rgba(244,63,94,.28)}
+.note-saved{font-size:9px;color:rgba(255,255,255,.3);font-style:italic;transition:opacity .3s}
+@media(max-width:768px){
+  .note-wrap{padding:8px 12px}
+  .note-ta{font-size:11px}
+}
+
+</style>
+</head>
+<body>
+
+<!-- ════════════════ LOGIN ════════════════ -->
+<div id="login">
+  <!-- ╔══════════════════════════════════════╗
+       ║  LOGO: cambia la src de <img> por     ║
+       ║  la URL de tu imagen o ruta relativa. ║
+       ║  Formatos: PNG, SVG, JPG, WEBP.       ║
+       ║  Tamaño recomendado: ≤ 200×60 px      ║
+       ╚══════════════════════════════════════╝ -->
+  <div class="lg-logo-wrap">
+    <img class="lg-logo-img"
+         src="https://www.omarsa.com.ec/wp-content/themes/omarsa_site/images/logo-omarsa.png"
+         alt="OMARSA"
+         onerror="this.style.display='none';this.nextElementSibling.style.display='block'"
+         onload="if(this.src && this.naturalWidth>0){this.style.display='block';this.nextElementSibling.style.display='none';}else{this.style.display='none';this.nextElementSibling.style.display='block';}"
+         style="display:none">
+    <!-- Texto de respaldo cuando no hay imagen configurada -->
+    <span class="lg-logo-text">OMARSA · Larvicultura</span>
+  </div>
+  <div class="lg-title">Sistema de Fichas</div>
+  <div class="lg-sub">Registro diario de tanques</div>
+
+  <div class="lg-card">
+    <span class="lg-section">Selecciona tu módulo</span>
+    <div class="mod-grid" id="mod-grid"></div>
+
+    <span class="lg-section" style="margin-top:4px;display:block">PIN de acceso</span>
+    <div class="pin-row">
+      <input type="password" class="pin-in" id="pin" maxlength="6"
+             placeholder="• • • • • •"
+             oninput="chkPin()"
+             onkeydown="if(event.key==='Enter'){enter();}">
+    </div>
+    <p class="pin-note">Ingresa el PIN asignado a tu módulo para acceder</p>
+
+    <button class="btn-enter" id="btn-go" onclick="enter()" disabled>
+      Acceder al Módulo <span id="btn-lbl">—</span> →
+    </button>
+  </div>
+</div>
+
+<!-- ════════════════ APP ════════════════ -->
+<div id="app">
+  <div class="topbar">
+    <div class="tb-brand">🦐 Larvicultura</div>
+    <div class="tb-badge" id="tb-badge">M—</div>
+    <div class="tb-r">
+      <div class="spill-bar">
+        <span class="sdot idle" id="sdot"></span>
+        <span id="slbl">Sin datos pendientes</span>
+      </div>
+      <button class="tbtn" onclick="syncAll()">🔄 Sincronizar</button>
+      <button class="tbtn" onclick="openCfg()">⚙ Config</button>
+      <button class="tbtn" onclick="goBack()">← Cambiar módulo</button>
+    </div>
+  </div>
+
+  <!-- ── NOTA DEL MÓDULO ── -->
+  <div class="note-wrap" id="note-bar">
+    <span class="note-ico">📝</span>
+    <div class="note-inner">
+      <div class="note-lbl">Nota del módulo <span id="note-mod-lbl"></span></div>
+      <textarea class="note-ta" id="note-ta" rows="1"
+        placeholder="Escribe una nota para este módulo…"
+        oninput="noteInput()" onblur="noteSave()"></textarea>
+      <div class="note-btns">
+        <button class="note-clear" onclick="noteClear()">🗑 Limpiar nota</button>
+        <span class="note-saved" id="note-saved"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dynamic tab bar — rebuilt by buildTabs() on enter() -->
+  <div class="ftabs" id="ftabs"></div>
+
+  <div class="main">
+    <div class="fp on" id="fp-calidad"></div>
+    <div class="fp" id="fp-plg"></div>
+    <div class="fp" id="fp-params"></div>
+    <div class="fp" id="fp-poblacion"></div>
+    <div class="fp" id="fp-algas"></div>
+    <div class="fp" id="fp-fotos"></div>
+  </div>
+</div>
+
+<div class="ta" id="toasts"></div>
+<div id="foto-lb" onclick="closeLb()">
+  <button id="foto-lb-x" onclick="closeLb()">✕</button>
+  <img id="foto-lb-img" src="" alt="" style="display:none">
+  <video id="foto-lb-vid" src="" controls playsinline style="display:none;max-width:94vw;max-height:90vh;border-radius:8px;box-shadow:0 0 80px rgba(0,0,0,.6)"></video>
+</div>
+
+
+<!-- CFG MODAL -->
+<div class="ov" id="cfg-ov" onclick="closeCfgOut(event)">
+  <div class="modal">
+    <div class="mh">
+      <div class="mt">⚙ Configuración · Google Sheets</div>
+      <button onclick="closeCfg()" style="background:rgba(255,255,255,.14);border:none;color:#fff;border-radius:6px;padding:3px 9px;cursor:pointer;font-size:13px">✕</button>
+    </div>
+    <div class="mb">
+      <div class="cf">
+        <label>URL del Google Apps Script (Web App)</label>
+        <input type="url" id="cfg-url" placeholder="https://script.google.com/macros/s/...exec">
+      </div>
+      <div class="cn">
+        <strong>Google Spreadsheet vinculado:</strong><br>
+        <code style="font-family:var(--mono);font-size:9.5px;background:#e2e8f0;padding:2px 6px;border-radius:3px;word-break:break-all">https://docs.google.com/spreadsheets/d/1Rrpff6bD1pOQFsi2Lsagan3ttjncxJzXoXLPgtHM0Gs</code>
+        <br><br>
+        <strong>Cómo conectar:</strong><br>
+        1. Abre <strong>script.google.com</strong> → Nuevo proyecto<br>
+        2. Copia el script del campo de abajo y pégalo completo<br>
+        3. <strong>Desplegar → Web App</strong> · Ejecutar como: <em>Yo</em> · Acceso: <em>Cualquiera</em><br>
+        4. Autoriza los permisos → copia la URL del Web App<br>
+        5. Pégala arriba y haz clic en <strong>Probar</strong>
+        <br><br>
+        <strong>Hojas que se crearán/rellenarán automáticamente:</strong><br>
+        • <em>Datos Larvicultura - M01…M10</em> → Calidad + PLG + Población (1 fila por TQ)<br>
+        • <em>Control_Tanque M01…M10</em> → Parámetros OD/°C (1 fila por TQ × hora)<br>
+        • <em>Datos Larvicultura - CIO</em> → Igual que M01–M10 (módulo CIO)<br>
+        • <em>Control_Tanque CIO</em> → Parámetros OD/°C del módulo CIO<br>
+        • <em>Lab_Algas</em> → Registro diario de cultivo de algas
+      </div>
+      <div class="cf">
+        <label>Código Google Apps Script (copia todo esto)</label>
+        <textarea id="gas-code" readonly></textarea>
+      </div>
+      <div class="cf">
+        <label>Técnico por defecto</label>
+        <input type="text" id="cfg-tec" placeholder="Nombre del técnico responsable">
+      </div>
+    </div>
+    <div class="mf2">
+      <button class="btn bo" onclick="testConn()">🔗 Probar conexión</button>
+      <button class="btn bp" onclick="saveCfg()">💾 Guardar config</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════
+   CONSTANTS
+══════════════════════════════════════════ */
+const MODS    = 10, TQS = 20;
+const CIO_MOD = 0;   // Módulo CIO
+const LAB_MOD = 11;  // Módulo Lab. Algas
+const PRE  = "larv4_";
+const RPRE = "larv4_rec_";
+const RTTL = 60 * 60 * 1000;         // 1 h
+const FPRE = "larv4_foto_";
+const FTTL = 24 * 60 * 60 * 1000;    // 24 h
+const FMAX = 8;
+const TTL  = 24 * 60 * 60 * 1000;
+// Historial Lab. Algas (cola de hasta 10 registros antes de sincronizar)
+const ALGHIST_PRE  = "larv4_alghist_";
+const ALGHIST_MAX  = 10;
+// Fichas que admiten "Nuevo registro" (no Parámetros, no Algas)
+const NUEVO_REG_FICHAS = ["calidad","plg","poblacion"];
+const PTIMES = ["02:00","04:00","06:00","08:00","10:00","12:00",
+                "14:00","16:00","18:00","20:00","22:00","00:00"];
+
+// Fichas for standard modules (M01–M10, CIO)
+const FICHAS = ["calidad","plg","params","poblacion"];
+// All valid ficha IDs across all modules
+const ALL_FICHAS = [...FICHAS, "algas"];
+
+// Module PINs
+const PINS = {
+  0:"2025",   // CIO
+  1:"1111",2:"2222",3:"3333",4:"4444",5:"5555",
+  6:"6666",7:"7777",8:"8888",9:"9999",10:"1010",
+  11:"2026"   // Lab. Algas
+};
+
+// ── Validates that m is a legal module identifier ──
+function isValidMod(m){
+  return Number.isInteger(m) &&
+    (m === CIO_MOD || m === LAB_MOD || (m >= 1 && m <= MODS));
+}
+
+// ── True when module is Lab. Algas ──
+function isLabMod(m){ return m === LAB_MOD; }
+
+/* ══════════════════════════════════════════
+   CUSTOM TANK NAMES (TQ 13–20 editable)
+   Stored per module in localStorage
+══════════════════════════════════════════ */
+const TQNAME_PRE = "larv4_tqname_";
+function tqNameKey(m){ return TQNAME_PRE + mLabel(m); }
+
+function loadTqNames(m){
+  try{
+    const raw = localStorage.getItem(tqNameKey(m));
+    if(raw) return JSON.parse(raw);
+  }catch(x){}
+  return {};
+}
+function saveTqNames(m, names){
+  try{ localStorage.setItem(tqNameKey(m), JSON.stringify(names)); }catch(x){}
+}
+// Save a single tank name change
+function onTqNameChange(i, el){
+  if(i < 12) return;
+  const val = sanitizeStr(el.value).trim();
+  const names = loadTqNames(curMod);
+  if(val && val !== "TQ " + (i+1)){
+    names[i] = val;
+  } else {
+    delete names[i];
+  }
+  saveTqNames(curMod, names);
+}
+// Generate tank cell HTML — pass pre-loaded names map for perf
+function tqCell(m, i, namesCache){
+  if(i < 12) return String(i+1);
+  const custom = namesCache[i] || ("TQ " + (i+1));
+  return `<input type="text" value="${escapeHtml(custom)}"
+    onchange="onTqNameChange(${i},this)" class="tqc-edit"
+    title="Editar nombre del tanque">`;
+}
+
+let curMod = null, curTab = "calidad";
+
+/* ══════════════════════════════════════════
+   UTILS
+══════════════════════════════════════════ */
+function today(){
+  const n = new Date();
+  return n.getFullYear() + '-' + pad(n.getMonth()+1) + '-' + pad(n.getDate());
+}
+function nowT(){
+  const n = new Date();
+  return pad(n.getHours()) + ":" + pad(n.getMinutes());
+}
+function pad(n){ return String(n).padStart(2,"0"); }
+function mLabel(m){
+  if(m === CIO_MOD) return "CIO";
+  if(m === LAB_MOD) return "Lab";
+  return "M" + String(m).padStart(2,"0");
+}
+
+/* ══════════════════════════════════════════
+   SECURITY UTILITIES
+   Ref: SKILL.md — XSS, Input Validation,
+   Output Encoding, Safe Defaults
+══════════════════════════════════════════ */
+
+// ── Output encoding: escape HTML entities to prevent XSS ──
+// Use on ALL user-controlled values inserted into innerHTML
+function escapeHtml(s){
+  if(s===null||s===undefined) return "";
+  return String(s)
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#x27;")
+    .replace(/\//g,"&#x2F;");
+}
+
+// ── Input sanitization: strip formula-injection chars and limit length ──
+// Prevents =IMPORTRANGE(), +cmd|, etc. from reaching Google Sheets
+// Also limits to 200 chars to prevent payload bloat
+function sanitizeStr(s){
+  if(s===null||s===undefined) return "";
+  let str = String(s).trim().slice(0,200);
+  // Strip leading formula injection chars (=, +, -, @)
+  while(str.length > 0 && "=+-@".indexOf(str.charAt(0)) !== -1){
+    str = str.slice(1);
+  }
+  return str;
+}
+
+// ── Numeric sanitization: parse, validate range, reject NaN/Infinity ──
+function sanitizeNum(v, min=-1e9, max=1e9){
+  const n=parseFloat(v);
+  if(!isFinite(n)) return "";
+  return Math.min(max,Math.max(min,n));
+}
+
+// ── Validate date string format YYYY-MM-DD ──
+function isValidDate(s){
+  return /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(s);
+}
+
+// ── Validate GAS URL — must be HTTPS on script.google.com ──
+function isValidGasUrl(url){
+  try{
+    const u=new URL(url);
+    return u.protocol==="https:" && u.hostname.endsWith("script.google.com");
+  }catch(e){ return false; }
+}
+
+// ── Rate limiter: max 5 sync attempts per 60 seconds ──
+// Prevents accidental or malicious repeated sends
+const _rl={count:0,reset:0};
+function syncRateOk(){
+  const now=Date.now();
+  if(now>_rl.reset){_rl.count=0;_rl.reset=now+60000;}
+  if(_rl.count>=5){ toast("Demasiados intentos. Espera 1 minuto.","warn"); return false; }
+  _rl.count++;
+  return true;
+}
+
+// ── Validate ficha data before saving ──
+function validateFicha(fid, data){
+  if(data.fecha && !isValidDate(data.fecha)){
+    toast("Fecha inválida en la ficha","warn"); return false;
+  }
+  // corrida is free-text (e.g. "552", "552-A") — sanitizeStr already guards injection
+  // Just enforce max length enforced by sanitizeStr (200 chars)
+  return true;
+}
+
+// Shorthand: escape a value from a data dict (used in render templates)
+const ev=(d,k,def="")=>escapeHtml(d[k]!==undefined&&d[k]!==""?d[k]:def);
+// Zero-safe value for input fields (0 is valid, "" and undefined are empty)
+const vl=(d,k)=>{const v=d[k];return(v!==undefined&&v!==null&&v!=="")?escapeHtml(v):"";}
+// Zero-safe value for payloads (preserves 0 as number)
+const pv=(o,k)=>{const v=o[k];return(v!==undefined&&v!==null&&v!=="")?v:"";}
+
+function gcfg(k,d=""){ return localStorage.getItem("lcfg_"+k) || d; }
+function scfg(k,v){ localStorage.setItem("lcfg_"+k, v); }
+
+function skey(m,f){ return PRE + mLabel(m) + "_" + f + "_" + today(); }
+function loadE(m,f){
+  try{
+    const raw = localStorage.getItem(skey(m,f));
+    if(!raw) return null;
+    const e = JSON.parse(raw);
+    if(!e || typeof e !== "object" || Array.isArray(e)) return null;
+    if(e.mod !== m || !ALL_FICHAS.includes(e.ficha)) return null;
+    if(!e.data || typeof e.data !== "object") return null;
+    return e;
+  }catch(x){ return null; }
+}
+function saveE(m,f,data,synced=false){
+  if(!isValidMod(m)) return;
+  if(!ALL_FICHAS.includes(f)) return;
+  if(!data||typeof data!=="object"||Array.isArray(data)) return;
+  const ex = loadE(m,f);
+  const e = {mod:m, ficha:f, date:today(),
+             savedAt: ex ? ex.savedAt : Date.now(),
+             updatedAt: Date.now(), synced, data};
+  try{
+    localStorage.setItem(skey(m,f), JSON.stringify(e));
+  }catch(x){
+    toast("Error al guardar localmente. Espacio insuficiente.","err");
+  }
+}
+function getStatus(m,f){
+  // Lab. Algas: si hay historial pendiente, marca como "pending"
+  if(f === "algas" && isLabMod(m) && loadAlgHist().length > 0) return "pending";
+  const e = loadE(m,f);
+  if(!e) return "empty";
+  return e.synced ? "synced" : "pending";
+}
+function cleanup(){
+  const now = Date.now(), keys = [];
+  for(let i = 0; i < localStorage.length; i++){
+    const k = localStorage.key(i);
+    if(k && (k.startsWith(PRE) || k.startsWith(FPRE))) keys.push(k);
+  }
+  keys.forEach(k=>{
+    try{
+      if(k.startsWith(ALGHIST_PRE)){
+        // Historial Lab. Algas: TTL 24h, marcado por la fecha embebida en la clave
+        const dStr = k.slice(ALGHIST_PRE.length);
+        if(/^\d{4}-\d{2}-\d{2}$/.test(dStr)){
+          const d = new Date(dStr + "T00:00:00");
+          if(!isNaN(d) && (now - d.getTime()) > TTL) localStorage.removeItem(k);
+        }
+        return;
+      }
+      const raw = localStorage.getItem(k);
+      if(!raw) return;
+      const e = JSON.parse(raw);
+      if(k.startsWith(FPRE)){
+        // Photo TTL: 24h
+        if(e && e.ts && (now - e.ts) > FTTL) localStorage.removeItem(k);
+      } else if(k.startsWith(RPRE)){
+        // Recovery snapshot TTL: 1h
+        if(e && e.ts && (now - e.ts) > RTTL) localStorage.removeItem(k);
+      } else {
+        // Ficha data TTL: 24h after sync
+        if(e && e.synced && (now - e.savedAt) > TTL) localStorage.removeItem(k);
+      }
+    }catch(x){}
+  });
+}
+
+/* ══════════════════════════════════════════
+   AUTO-SAVE RECOVERY
+   Saves a snapshot every 60s regardless of manual save.
+   Key: RPRE + mLabel(m) + "_" + fid  (no date suffix — survives midnight)
+   TTL: 1 hour. Cleared on successful Recuperar.
+══════════════════════════════════════════ */
+function rkeyR(m,f){ return RPRE + mLabel(m) + "_" + f; }
+
+function saveRecovery(m, fid, data){
+  if(!isValidMod(m)) return;
+  if(!ALL_FICHAS.includes(fid)) return;
+  const entry = { mod:m, ficha:fid, ts:Date.now(), data };
+  try{ localStorage.setItem(rkeyR(m,fid), JSON.stringify(entry)); }
+  catch(x){} // silent — recovery is best-effort
+}
+
+function loadRecovery(m, fid){
+  try{
+    const raw = localStorage.getItem(rkeyR(m,fid));
+    if(!raw) return null;
+    const e = JSON.parse(raw);
+    // NOTE: e.mod === m uses strict equality so CIO (mod=0) is handled correctly
+    if(!e||typeof e!=="object"||e.mod!==m||!ALL_FICHAS.includes(e.ficha)) return null;
+    if(Date.now()-e.ts > RTTL){ localStorage.removeItem(rkeyR(m,fid)); return null; }
+    return e;
+  }catch(x){ return null; }
+}
+
+function clearRecovery(m, fid){
+  localStorage.removeItem(rkeyR(m,fid));
+}
+
+/* ══════════════════════════════════════════
+   HISTORIAL LAB. ALGAS
+   Cola de registros pendientes de sincronizar
+   (máx 10 por día). Cada entrada = snapshot
+   de la ficha. Se vacía tras sync exitoso.
+══════════════════════════════════════════ */
+function algHistKey(){ return ALGHIST_PRE + today(); }
+
+function loadAlgHist(){
+  try{
+    const raw = localStorage.getItem(algHistKey());
+    if(!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  }catch(x){ return []; }
+}
+function saveAlgHist(list){
+  try{ localStorage.setItem(algHistKey(), JSON.stringify(list||[])); }
+  catch(x){ toast("No se pudo guardar el historial (espacio insuficiente).","err"); }
+}
+function pushAlgHist(data){
+  const list = loadAlgHist();
+  if(list.length >= ALGHIST_MAX){
+    toast("Historial lleno ("+ALGHIST_MAX+" registros). Sincroniza o elimina alguno antes de agregar más.","warn",4500);
+    return false;
+  }
+  if(!data || typeof data !== "object" || Array.isArray(data)){ return false; }
+  list.push({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+    ts: Date.now(),
+    data: data
+  });
+  saveAlgHist(list);
+  return true;
+}
+function removeAlgHistById(id){
+  const list = loadAlgHist().filter(x => x.id !== id);
+  saveAlgHist(list);
+}
+function clearAlgHist(){
+  try{ localStorage.removeItem(algHistKey()); }catch(x){}
+}
+
+
+// Called every 60s while app is visible — collects current form state
+let _recTimer = null;
+function startAutoRecovery(){
+  if(_recTimer) clearInterval(_recTimer);
+  _recTimer = setInterval(()=>{
+    if(curMod === null || curMod === undefined) return;
+    const fid = curTab;
+    if(!ALL_FICHAS.includes(fid)) return; // fotos tab has no ficha data
+    const fp = document.getElementById("fp-"+fid);
+    if(!fp || !fp.classList.contains("on")) return;
+    const data = collect(fid);
+    const hasData = Object.values(data).some(v=>v!==null&&v!==undefined&&v!=="");
+    if(hasData) saveRecovery(curMod, fid, data);
+  }, 60000);
+}
+
+function recoverFicha(fid){
+  if(!ALL_FICHAS.includes(fid)) return;
+  const rec = loadRecovery(curMod, fid);
+  if(!rec){
+    toast("No hay datos de recuperación disponibles","warn"); return;
+  }
+  const ts = new Date(rec.ts).toLocaleString("es-EC");
+  if(!confirm("¿Recuperar los datos guardados automáticamente el " + ts + "?\nSe reemplazará el contenido actual de la ficha.")) return;
+  saveE(curMod, fid, rec.data, false);
+  clearRecovery(curMod, fid);
+  renderFicha(fid);
+  updateDots(); updateSyncUI();
+  toast("✅ Datos recuperados del autoguardado","ok",4000);
+}
+
+/* ══════════════════════════════════════════
+   TOAST
+══════════════════════════════════════════ */
+function toast(msg, type="info", dur=3500){
+  const a = document.getElementById("toasts");
+  if(!a) return;
+  const VALID_TYPES = new Set(["ok","err","warn","info"]);
+  const t = VALID_TYPES.has(type) ? type : "info";
+  const el = document.createElement("div");
+  el.className = "toast " + t;
+  el.textContent = (t==="ok"?"✅":t==="err"?"❌":t==="warn"?"⚠️":"ℹ️") + " " + msg;
+  a.appendChild(el);
+  setTimeout(()=>{
+    el.style.cssText="opacity:0;transform:translateX(16px);transition:.3s";
+    setTimeout(()=>el.remove(), 320);
+  }, dur);
+}
+
+/* ══════════════════════════════════════════
+   SYNC UI
+══════════════════════════════════════════ */
+function setSyncUI(st, lbl){
+  document.getElementById("sdot").className = "sdot " + st;
+  document.getElementById("slbl").textContent = lbl;
+}
+/* ══════════════════════════════════════════
+   GOOGLE SHEET PAYLOAD BUILDERS
+   Maps 4 fichas → 2 sheet tabs (LARC.xlsx structure)
+══════════════════════════════════════════ */
+
+/*
+  "Datos Larvicultura - M0X"  (29 columns, 1 row per TQ)
+  Sources: Calidad + PLG + Población fichas
+  [0]Fecha [1]Corrida [2]Módulo [3]Tanque
+  [4]Supervivencia [5]Mortalidad [6]Población [7]Lote [8]Estadío
+  [9]Intestino_Lleno [10]Intestino_Semilleno [11]Intestino_Vacio
+  [12]Deformidad [13]Retraso [14]% Mortalidad
+  [15]Hongos [16]% No_viables [17]% Opacidad [18]Lípidos
+  [19]Flácidez [20]Necrosis [21]Canibalismo [22]Parásitos
+  [23]% Actividad [24]Plg [25]Talla [26]Estrés [27]Salinidad [28]Técnico
+*/
+function buildDatosPayload(m){
+  const cal = (loadE(m,"calidad") || {data:{}}).data;
+  const plg = (loadE(m,"plg")     || {data:{}}).data;
+  const pob = (loadE(m,"poblacion")|| {data:{}}).data;
+  const _tqn = loadTqNames(m);
+
+  const fecha   = isValidDate(pob.fecha||"") ? pob.fecha : isValidDate(cal.fecha||"") ? cal.fecha : isValidDate(plg.fecha||"") ? plg.fecha : today();
+  const corrida = sanitizeStr(pob.corrida || cal.corrida || plg.corrida || "");
+  const tec     = sanitizeStr(cal.tec || plg.tec || pob.tec || gcfg("tec",""));
+  // ── "Nuevo registro" — si alguna ficha (cal/plg/pob) tiene _regId activo,
+  //    los nombres de tanque llevan sufijo "(HH:MM)" para que la GAS NO upserte
+  //    sobre la fila previa (clave Fecha|Módulo|Tanque) y cree una fila nueva.
+  const _regs   = [cal._regId, plg._regId, pob._regId]
+                    .filter(s => /^\d{2}:\d{2}$/.test(String(s||'')))
+                    .sort();
+  const _regSuf = _regs.length ? ' ('+_regs[_regs.length-1]+')' : '';
+  const _tqLbl = (i) => (_tqn[i] || ("TQ " + (i+1))) + _regSuf;
+
+  const headers = [
+    "Fecha","Corrida","Módulo","Tanque",
+    "Supervivencia","Mortalidad","Población","Lote","Estadío",
+    "Intestino_Lleno","Intestino_Semilleno","Intestino_Vacio",
+    "Deformidad","Retraso","% Mortalidad",
+    "Hongos","% No_viables","% Opacidad","Lípidos","Flácidez","Necrosis","Canibalismo","Parásitos",
+    "% Actividad","Plg","Talla","Estrés","Salinidad","Técnico"
+  ];
+
+  const allRows = Array.from({length:TQS}, (_,i) => {
+    const dataFields = [
+      pob["sv_"+i], pob["po_"+i], pob["lt_"+i], pob["e_"+i],
+      cal["e_"+i], cal["ll_"+i], cal["sl_"+i], cal["va_"+i],
+      cal["df_"+i], cal["rt_"+i], cal["mo_"+i], cal["hg_"+i],
+      cal["nv_"+i], cal["op_"+i],
+      cal["lp_"+i], cal["fl_"+i], cal["nc_"+i], cal["cb_"+i],
+      cal["pr_"+i], cal["cos_"+i], cal["es_"+i],
+      plg["pg_"+i], plg["ta_"+i], plg["lt_"+i],
+      pob["sal_"+i]
+    ];
+    const hasData = dataFields.some(v => v !== undefined && v !== "" && v !== null);
+    if(!hasData) return null;
+    const rawPob = pob["po_"+i] || "";
+    let pobReal = "";
+    if(rawPob !== ""){
+      const n = parseFloat(rawPob);
+      pobReal = isFinite(n) ? Math.round(n * 1000 * 100) / 100 : "";
+    }
+    return [
+      fecha, corrida, mLabel(m), _tqLbl(i),
+      pv(pob,"sv_"+i), "", pobReal,
+      pob["lt_"+i] || plg["lt_"+i] || "",
+      cal["e_"+i]  || pob["e_"+i]  || "",
+      pv(cal,"ll_"+i), pv(cal,"sl_"+i), pv(cal,"va_"+i),
+      pv(cal,"df_"+i), pv(cal,"rt_"+i), pv(cal,"mo_"+i),
+      pv(cal,"hg_"+i), pv(cal,"nv_"+i), pv(cal,"op_"+i),
+      pv(cal,"lp_"+i), pv(cal,"fl_"+i),
+      pv(cal,"nc_"+i), pv(cal,"cb_"+i), pv(cal,"pr_"+i),
+      pv(cal,"cos_"+i), pv(plg,"pg_"+i),
+      pv(plg,"ta_"+i) || pv(cal,"ta_"+i) || "",
+      pv(cal,"es_"+i), pv(pob,"sal_"+i), tec
+    ];
+  });
+
+  return {
+    sheetName: "Datos Larvicultura - " + mLabel(m),
+    headers,
+    rows: allRows.filter(r => r !== null)
+  };
+}
+function buildControlPayload(m){
+  const par = (loadE(m,"params") || {data:{}}).data;
+  const _tqn = loadTqNames(m);
+
+  // SECURITY: validate and sanitize fields before payload
+  const fechaStr = isValidDate(par.fecha||"") ? par.fecha : today();
+  const corrida  = sanitizeStr(par.corrida || "");
+  const obs      = sanitizeStr(par.obs || "");
+  const _tqLbl = (i) => _tqn[i] || ("TQ " + (i+1));
+
+  const headers = ["Fecha","Hora","Corrida","Módulo","Tanque","OD","Temperatura","Observacion"];
+  const rows    = [];
+  let firstRow  = true;
+
+  for(let i=0;i<TQS;i++){
+    const tankHasData = PTIMES.some(t =>
+      (par["od_"+i+"_"+t]||"") !== "" || (par["tc_"+i+"_"+t]||"") !== ""
+    );
+    if(!tankHasData) continue;
+    for(let ti=0;ti<PTIMES.length;ti++){
+      const t   = PTIMES[ti];
+      const od  = par["od_"+i+"_"+t] || "";
+      const tmp = par["tc_"+i+"_"+t] || "";
+      if(od===""&&tmp==="") continue;
+      rows.push([
+        fechaStr, t, corrida, mLabel(m), _tqLbl(i),
+        od  !== "" ? parseFloat(od)  : "",
+        tmp !== "" ? parseFloat(tmp) : "",
+        firstRow ? obs : ""
+      ]);
+      firstRow = false;
+    }
+  }
+
+  return {
+    sheetName: "Control_Tanque " + mLabel(m),
+    headers, rows
+  };
+}
+
+/* ══════════════════════════════════════════
+   SYNC ENGINE
+══════════════════════════════════════════ */
+async function postPayload(payload, url){
+  const ctrl = new AbortController();
+  const timer = setTimeout(()=>ctrl.abort(), 15000); // 15s timeout
+  try{
+    const r = await fetch(url, {
+      method:"POST",
+      body: JSON.stringify(payload),
+      headers:{"Content-Type":"text/plain"},
+      signal: ctrl.signal
+    });
+    clearTimeout(timer);
+    if(!r.ok) return false;
+    let j;
+    try{ j = JSON.parse(await r.text()); }
+    catch(e){ return false; }
+    return j && j.status === "ok";
+  }catch(x){
+    clearTimeout(timer);
+    if(x.name==="AbortError") console.error("[Sync] Request timed out");
+    else console.error("[Sync] Network error:", x.message);
+    return false;
+  }
+}
+
+async function syncAll(){
+  if(!syncRateOk()) return;
+
+  const url = gasUrl();
+  if(!url){ toast("Configura la URL de Google Apps Script primero","warn"); openCfg(); return; }
+  if(!isValidGasUrl(url)){ toast("URL de script inválida","err"); openCfg(); return; }
+
+  setSyncUI("pend","Sincronizando...");
+  let ok=0, fail=0, total=0;
+
+  // Block sync without corrida for M01-M10 and CIO
+  if(!isLabMod(curMod)){
+    const fichaList = ["calidad","plg","params","poblacion"];
+    let hasCorrida = false;
+    fichaList.forEach(f=>{
+      const e = loadE(curMod, f);
+      if(e && e.data && sanitizeStr(e.data.corrida||"")) hasCorrida = true;
+    });
+    if(!hasCorrida){
+      setSyncUI("idle","Sin corrida");
+      toast("⚠️ Ingresa el número de corrida en alguna ficha antes de sincronizar","warn",4500);
+      return;
+    }
+  }
+
+  if(isLabMod(curMod)){
+    // ── Lab. Algas: hoja única Lab_Algas ──
+    if(getStatus(curMod,"algas")==="pending"){
+      total++;
+      const _histLen = loadAlgHist().length;
+      toast(_histLen ? ("Enviando Lab. Algas — "+_histLen+" del historial + actual…") : "Enviando Lab. Algas…","info",2200);
+      const ap = buildAlgasPayload(curMod);
+      if(ap.rows.length > 0){
+        const sent = await postPayload(ap, url);
+        if(sent){
+          // Vacía el historial tras envío exitoso — los registros ya están en Sheets
+          clearAlgHist();
+          const e=loadE(curMod,"algas"); if(e) saveE(curMod,"algas",e.data,true);
+          ok++;
+          // Re-render para reflejar historial vacío
+          if(curTab === "algas") try{ renderAlgas(); }catch(_){}
+        }
+        else { fail++; }
+      } else {
+        const e=loadE(curMod,"algas"); if(e) saveE(curMod,"algas",e.data,true);
+        ok++;
+      }
+    }
+  } else {
+    // ── Hoja 1: Datos Larvicultura ──
+    const pendDatos = ["calidad","plg","poblacion"].filter(f => getStatus(curMod,f)==="pending");
+    if(pendDatos.length > 0){
+      total++;
+      toast("Enviando Datos Larvicultura…","info",2000);
+      const dp = buildDatosPayload(curMod);
+      if(dp.rows.length > 0){
+        const sent = await postPayload(dp, url);
+        if(sent){
+          pendDatos.forEach(f=>{
+            const e=loadE(curMod,f);
+            if(!e) return;
+            // Tras un envío exitoso, limpia el flag _regId — el siguiente
+            // guardado del día (si lo hay) volverá a comportarse como upsert
+            // normal salvo que el usuario reactive "Nuevo registro".
+            const _data = Object.assign({}, e.data);
+            delete _data._regId;
+            saveE(curMod,f,_data,true);
+          });
+          // Re-render visible para reflejar el nuevo estado (banner desaparece, botón vuelve a estado normal)
+          if(NUEVO_REG_FICHAS.includes(curTab)) try{ renderFicha(curTab); }catch(_){}
+          ok++;
+        } else { fail++; }
+      } else {
+        pendDatos.forEach(f=>{ const e=loadE(curMod,f); if(e) saveE(curMod,f,e.data,true); });
+        ok++;
+      }
+    }
+    // ── Hoja 2: Control_Tanque ──
+    if(getStatus(curMod,"params")==="pending"){
+      total++;
+      toast("Enviando Parámetros…","info",2000);
+      const cp = buildControlPayload(curMod);
+      if(cp.rows.length > 0){
+        const sent = await postPayload(cp, url);
+        if(sent){ const e=loadE(curMod,"params"); if(e) saveE(curMod,"params",e.data,true); ok++; }
+        else { fail++; }
+      } else {
+        const e=loadE(curMod,"params"); if(e) saveE(curMod,"params",e.data,true);
+        ok++;
+      }
+    }
+  }
+
+  if(!total){ setSyncUI("idle","Sin datos nuevos"); toast("No hay datos pendientes","info",2000); updateDots(); return; }
+  if(!fail){
+    setSyncUI("ok", ok+" hoja(s) sincronizada(s) ✔");
+    toast("¡Datos registrados en Google Sheets!","ok");
+    setTimeout(()=>{ setSyncUI("idle","Todo sincronizado"); }, 4000);
+  } else {
+    setSyncUI("err", fail+" hoja(s) con error — revisa la conexión");
+    toast("Error en "+fail+" hoja(s). Revisa la conexión y reintenta.","err");
+  }
+  updateDots();
+}
+
+
+/* ══════════════════════════════════════════
+   LOGIN
+══════════════════════════════════════════ */
+function buildGrid(){
+  let h = "";
+  // M01–M10
+  for(let m=1; m<=MODS; m++){
+    const anyPend = FICHAS.some(f=>getStatus(m,f)==="pending");
+    const anySync = FICHAS.some(f=>getStatus(m,f)==="synced");
+    const cls = anyPend?"pend":anySync?"sync":"";
+    h += `<div class="mc ${cls}" id="mc${m}" onclick="pickMod(${m})">
+      <div class="mc-num">${m<10?"0"+m:m}</div>
+      <div class="mc-lbl">Módulo</div>
+      <span class="mc-dot"></span>
+    </div>`;
+  }
+  // CIO tile
+  const cioPend = FICHAS.some(f=>getStatus(CIO_MOD,f)==="pending");
+  const cioSync = FICHAS.some(f=>getStatus(CIO_MOD,f)==="synced");
+  const cioCls = cioPend?"pend":cioSync?"sync":"";
+  h += `<div class="mc mc-cio ${cioCls}" id="mc0" onclick="pickMod(0)">
+    <div class="mc-num">CIO</div>
+    <div class="mc-lbl">Especial</div>
+    <span class="mc-dot"></span>
+  </div>`;
+  // Lab. Algas tile
+  const labPend = ["algas"].some(f=>getStatus(LAB_MOD,f)==="pending");
+  const labSync = ["algas"].some(f=>getStatus(LAB_MOD,f)==="synced");
+  const labCls = labPend?"pend":labSync?"sync":"";
+  h += `<div class="mc mc-lab ${labCls}" id="mc11" onclick="pickMod(11)">
+    <div class="mc-num">🌿</div>
+    <div class="mc-lbl">Lab Algas</div>
+    <span class="mc-dot"></span>
+  </div>`;
+  document.getElementById("mod-grid").innerHTML = h;
+}
+
+function pickMod(m){
+  const mInt = parseInt(m, 10);
+  if(!isValidMod(mInt)) return;
+  document.querySelectorAll(".mc").forEach(c=>c.classList.remove("sel"));
+  const tile = document.getElementById("mc" + mInt);
+  if(tile) tile.classList.add("sel");
+  curMod = mInt;
+  document.getElementById("btn-lbl").textContent = mLabel(mInt);
+  chkPin();
+}
+
+function chkPin(){
+  const pin = document.getElementById("pin").value;
+  // NOTE: curMod can be 0 (CIO) — isValidMod handles the falsy-0 case
+  document.getElementById("btn-go").disabled = !(isValidMod(curMod) && pin === PINS[curMod]);
+}
+
+function enter(){
+  if(curMod === null || curMod === undefined || !isValidMod(curMod)) return;
+  const pinEl = document.getElementById("pin");
+  const pin   = pinEl.value;
+  if(pin !== PINS[curMod]){
+    pinEl.classList.remove("shake");
+    void pinEl.offsetWidth;
+    pinEl.classList.add("shake");
+    pinEl.addEventListener("animationend", ()=>pinEl.classList.remove("shake"), {once:true});
+    return;
+  }
+  document.getElementById("login").classList.add("gone");
+  document.getElementById("app").classList.add("on");
+  const badge = document.getElementById("tb-badge");
+  badge.textContent = mLabel(curMod);
+  badge.className = "tb-badge" +
+    (curMod === CIO_MOD ? " cio" : curMod === LAB_MOD ? " lab" : "");
+  curTab = isLabMod(curMod) ? "algas" : "calidad";
+  buildTabs(isLabMod(curMod));
+  renderAll();
+  updateSyncUI();
+  startAutoRecovery();
+  renderNote(curMod);
+}
+
+function goBack(){
+  if(_recTimer){ clearInterval(_recTimer); _recTimer = null; }
+  if(_noteTm){ clearTimeout(_noteTm); _noteTm = null; }
+  document.getElementById("app").classList.remove("on");
+  document.getElementById("login").classList.remove("gone");
+  document.getElementById("pin").value = "";
+  document.getElementById("btn-go").disabled = true;
+  curMod = null;
+  buildGrid();
+}
+
+/* ══════════════════════════════════════════
+   TAB NAVIGATION
+   buildTabs() regenerates the tab bar based on module type.
+   Lab. Algas has only "algas" + "fotos" tabs.
+   All other modules have the full 4 fichas + fotos.
+══════════════════════════════════════════ */
+const LAB_TABS      = ["algas","fotos"];
+const STANDARD_TABS = [...FICHAS,"fotos"];
+// Rendered as [id, icon, label]
+const TAB_META = {
+  calidad:  ["🔬","Calidad Larvaria"],
+  plg:      ["⚖️","PL Gramo Externo"],
+  params:   ["🌡️","Parámetros"],
+  poblacion:["🧮","Población"],
+  algas:    ["🌿","Lab. Algas"],
+  fotos:    ["📷","Fotos y Videos"]
+};
+
+function buildTabs(isLab){
+  const tabs = isLab ? LAB_TABS : STANDARD_TABS;
+  const first = tabs[0];
+  document.getElementById("ftabs").innerHTML = tabs.map(t => {
+    const [ico,lbl] = TAB_META[t] || ["",""];
+    return `<button class="ftab${t===first?" on":""}" data-f="${t}" onclick="selTab('${t}')">
+      <span class="fdot mt" id="dot-${t}"></span>${ico} ${lbl}
+    </button>`;
+  }).join("");
+}
+
+function selTab(t){
+  const tabs = isLabMod(curMod) ? LAB_TABS : STANDARD_TABS;
+  if(!tabs.includes(t)) return;
+  curTab = t;
+  document.querySelectorAll(".ftab").forEach(b=>b.classList.toggle("on",b.dataset.f===t));
+  document.querySelectorAll(".fp").forEach(p=>p.classList.remove("on"));
+  const panel = document.getElementById("fp-"+t);
+  if(panel) panel.classList.add("on");
+  if(t==="fotos") renderFotos();
+}
+
+function updateDots(){
+  const tabs = isLabMod(curMod) ? ["algas"] : FICHAS;
+  tabs.forEach(f=>{
+    const el = document.getElementById("dot-"+f);
+    if(!el) return;
+    const s = getStatus(curMod,f);
+    el.className = "fdot " + (s==="synced"?"ok":s==="pending"?"pend":"mt");
+  });
+}
+function updateSyncUI(){
+  const tabs = isLabMod(curMod) ? ["algas"] : FICHAS;
+  const p = tabs.filter(f=>getStatus(curMod,f)==="pending").length;
+  if(!p) setSyncUI("idle","Todo sincronizado");
+  else   setSyncUI("pend", p + " ficha(s) pendiente(s)");
+}
+
+/* ══════════════════════════════════════════
+   COLLECT + AUTO-SAVE
+══════════════════════════════════════════ */
+function collect(fid){
+  const fp = document.getElementById("fp-"+fid);
+  if(!fp) return {};
+  const d = {};
+  fp.querySelectorAll("[name]").forEach(el=>{
+    if(el.type==="number"){
+      if(el.value===""){d[el.name]="";return;}
+      // Use field min/max when declared (e.g. 0-100 for percentages)
+      const lo = el.min!=="" ? parseFloat(el.min) : -1e9;
+      const hi = el.max!=="" ? parseFloat(el.max) :  1e9;
+      d[el.name] = sanitizeNum(el.value, lo, hi);
+    } else if(el.type==="date"){
+      d[el.name] = isValidDate(el.value) ? el.value : "";
+    } else if(el.type==="time"){
+      d[el.name] = /^\d{2}:\d{2}$/.test(el.value) ? el.value : "";
+    } else if(el.tagName==="TEXTAREA"){
+      d[el.name] = sanitizeStr(el.value);
+    } else {
+      d[el.name] = sanitizeStr(el.value);
+    }
+  });
+  return d;
+}
+// Preserva el flag _regId (modo "Nuevo registro") al guardar — no es un input
+// del formulario y collect() no lo recoge, por lo que se reinyecta desde storage.
+function _preserveRegId(fid, data){
+  if(!NUEVO_REG_FICHAS.includes(fid)) return data;
+  const ex = loadE(curMod, fid);
+  if(ex && ex.data && /^\d{2}:\d{2}$/.test(String(ex.data._regId||""))){
+    data._regId = ex.data._regId;
+  }
+  return data;
+}
+function localSave(fid){
+  const data = _preserveRegId(fid, collect(fid));
+  // SECURITY: validate inputs before persisting
+  if(!validateFicha(fid, data)) return;
+  saveE(curMod, fid, data, false);
+  updateDots(); updateSyncUI();
+  const sp=document.getElementById("sp-"+fid); if(sp) sp.innerHTML=sspill("pending");
+  toast("Guardado localmente","ok");
+}
+async function localSync(fid){
+  const data = _preserveRegId(fid, collect(fid));
+  if(!validateFicha(fid, data)) return;
+  // Block sync without corrida for M01-M10 and CIO
+  if(!isLabMod(curMod)){
+    const corridaVal = sanitizeStr(data.corrida || "");
+    if(!corridaVal){
+      toast("⚠️ Ingresa el número de corrida antes de sincronizar","warn",4000);
+      return;
+    }
+  }
+  saveE(curMod, fid, data, false);
+  await syncAll();
+}
+
+/* ══════════════════════════════════════════
+   STATUS PILL + SAVE AREA
+══════════════════════════════════════════ */
+function sspill(s){
+  if(s==="synced") return'<span class="ssp ssp-ok">✅ En Google Sheets</span>';
+  if(s==="pending") return'<span class="ssp ssp-pend">⏳ Guardado local</span>';
+  return'<span class="ssp ssp-mt">○ Sin datos hoy</span>';
+}
+function saveArea(fid){
+  const e    = loadE(curMod, fid);
+  const s    = getStatus(curMod, fid);
+  const last = e ? new Date(e.updatedAt).toLocaleString("es-EC") : "—";
+  const rec  = loadRecovery(curMod, fid);
+  const recTs = rec ? new Date(rec.ts).toLocaleString("es-EC",{hour:"2-digit",minute:"2-digit"}) : null;
+  const recBtn = rec
+    ? `<button class="btn brec" onclick="recoverFicha('${fid}')" title="Recuperar autoguardado de ${recTs}">↩ Recuperar (${recTs})</button>`
+    : `<button class="btn brec" disabled style="opacity:.35;cursor:not-allowed">↩ Recuperar</button>`;
+  const pdfBtn = (fid !== "algas")
+    ? `<button class="btn bpdf" onclick="downloadPDF('${fid}')" title="PDF A4">📄 PDF</button>`
+    : "";
+
+  // Botón "Nuevo registro" — sólo en calidad / plg / poblacion (NO params, NO algas)
+  let nuevoBtn = "";
+  if(NUEVO_REG_FICHAS.includes(fid)){
+    const regId = (e && e.data && /^\d{2}:\d{2}$/.test(String(e.data._regId||""))) ? e.data._regId : "";
+    if(regId){
+      nuevoBtn = `<button class="btn bnuevo bnuevo-on" onclick="toggleNuevoReg('${fid}')"
+        title="Modo 'Nuevo registro' ACTIVO — esta ficha se enviará como una fila NUEVA en Sheets. Clic para cancelar.">
+        🆕 Nuevo registro #${escapeHtml(regId)} ✓
+      </button>`;
+    } else {
+      nuevoBtn = `<button class="btn bnuevo" onclick="toggleNuevoReg('${fid}')"
+        title="Marcar como NUEVO registro: la próxima sincronización creará una fila nueva en Sheets en lugar de reemplazar el registro anterior del día.">
+        🆕 Nuevo registro
+      </button>`;
+    }
+  }
+
+  // Botón "Agregar al historial" — exclusivo Lab. Algas
+  const algBtn = (fid === "algas" && isLabMod(curMod))
+    ? `<button class="alg-add-btn" onclick="addToAlgHist()"
+        title="Agrega el registro actual al historial pendiente (máx ${ALGHIST_MAX}). Después podrás sincronizar todos juntos.">
+        📋 Agregar al historial
+       </button>`
+    : "";
+
+  return `<div class="sa">
+    <div class="sa-info">
+      <span>💾 Último guardado: <strong>${last}</strong></span>
+      <span id="sp-${fid}">${sspill(s)}</span>
+    </div>
+    <div class="sa-btns">
+      ${nuevoBtn}
+      ${algBtn}
+      <button class="btn bd" onclick="clearFicha('${fid}')" title="Borrar datos">🗑 Borrar</button>
+      ${recBtn}
+      ${pdfBtn}
+      <button class="btn bs" onclick="localSave('${fid}')">💾 Guardar local</button>
+      <button class="btn bp" onclick="localSync('${fid}')">☁️ Guardar y sincronizar</button>
+    </div>
+  </div>`;
+}
+
+/* Banner visible dentro de la ficha cuando "Nuevo registro" está activo */
+function nuevoRegBanner(fid){
+  if(!NUEVO_REG_FICHAS.includes(fid)) return "";
+  const e = loadE(curMod, fid);
+  const regId = (e && e.data && /^\d{2}:\d{2}$/.test(String(e.data._regId||""))) ? e.data._regId : "";
+  if(!regId) return "";
+  return `<div class="nuevoreg-banner">
+    <span class="nrb-tag">🆕 NUEVO REGISTRO · #${escapeHtml(regId)}</span>
+    <span>Esta ficha se enviará como <b>fila NUEVA</b> en Google Sheets (sufijo de tanque <code>(${escapeHtml(regId)})</code> en la columna Tanque), <b>sin reemplazar</b> el registro anterior del día.</span>
+  </div>`;
+}
+
+/* ── Ficha render dispatch ─────────────────
+   Single entry point. Add new fichas here only.
+────────────────────────────────────────── */
+const FICHA_LABELS = {
+  calidad:"Calidad Larvaria",
+  plg:"PL Gramo Externo",
+  params:"Parámetros",
+  poblacion:"Población",
+  algas:"Lab. Algas"
+};
+function renderFicha(fid){
+  const fn = {
+    calidad:  renderCalidad,
+    plg:      renderPlg,
+    params:   renderParams,
+    poblacion:renderPoblacion,
+    algas:    renderAlgas
+  }[fid];
+  if(fn) fn();
+}
+
+function clearFicha(fid){
+  if(!ALL_FICHAS.includes(fid)) return;
+  const label = FICHA_LABELS[fid] || fid;
+  if(!confirm("¿Borrar todos los datos de " + label + "?\nEsto no afecta lo ya enviado a Google Sheets.")) return;
+  localStorage.removeItem(skey(curMod, fid));
+  toast("Datos de " + label + " borrados","ok");
+  renderFicha(fid);
+  updateDots(); updateSyncUI();
+}
+
+/* ══════════════════════════════════════════
+   "NUEVO REGISTRO" — calidad / plg / poblacion
+   Marca la siguiente sincronización como un
+   registro NUEVO (no reemplaza al anterior del
+   día). En sync, se añade sufijo "(HH:MM)" al
+   tanque para romper la clave de upsert de la GAS.
+══════════════════════════════════════════ */
+function toggleNuevoReg(fid){
+  if(!NUEVO_REG_FICHAS.includes(fid)) return;
+  if(curMod === null || curMod === undefined) return;
+  const e   = loadE(curMod, fid);
+  const cur = collect(fid);
+  const stored = (e && e.data) ? e.data : {};
+  // Estado actual: si la ficha guardada ya tiene _regId, está activo
+  const activo = !!(stored._regId && /^\d{2}:\d{2}$/.test(stored._regId));
+
+  if(activo){
+    if(!confirm("¿Cancelar el modo 'Nuevo registro #"+stored._regId+"'?\n\nVolverá a REEMPLAZAR el registro anterior del día al sincronizar.")) return;
+    // Conserva los datos actuales del formulario, solo retira el flag
+    const merged = Object.assign({}, stored, cur);
+    delete merged._regId;
+    saveE(curMod, fid, merged, false);
+    renderFicha(fid);
+    updateDots(); updateSyncUI();
+    toast("Modo 'Nuevo registro' cancelado · sincronización normal restaurada","ok",3500);
+    return;
+  }
+
+  if(!confirm(
+    "Marcar como NUEVO REGISTRO\n\n"+
+    "• Esto creará una FILA NUEVA en Google Sheets en lugar de reemplazar el registro anterior del día.\n"+
+    "• Útil cuando hay más de un muestreo en el mismo día (ej. mañana / tarde).\n"+
+    "• Se LIMPIARÁ el formulario para que ingreses los datos del nuevo registro.\n"+
+    "• Se conservarán: Fecha, Corrida y Técnico del registro actual.\n\n"+
+    "¿Continuar?"
+  )) return;
+
+  const t = nowT();
+  const preserved = {
+    fecha:    cur.fecha    || stored.fecha    || today(),
+    corrida:  cur.corrida  || stored.corrida  || "",
+    tec:      cur.tec      || stored.tec      || gcfg("tec",""),
+    hora:     t,
+    _regId:   t
+  };
+  // Conserva siembra si la ficha la usa (plg / poblacion)
+  if(cur.siembra) preserved.siembra = cur.siembra;
+  saveE(curMod, fid, preserved, false);
+  renderFicha(fid);
+  updateDots(); updateSyncUI();
+  toast("🆕 Modo 'Nuevo registro #"+t+"' activo · llena los datos y sincroniza","ok",5500);
+}
+
+/* ══════════════════════════════════════════
+   ACCIONES SOBRE EL HISTORIAL LAB. ALGAS
+══════════════════════════════════════════ */
+function addToAlgHist(){
+  if(!isLabMod(curMod)) return;
+  const data = collect("algas");
+  if(!validateFicha("algas", data)) return;
+  // Mínimo: requiere fecha o cel_ml
+  const hasMin = ["fecha","cel_ml"].some(k => data[k] !== undefined && data[k] !== "");
+  if(!hasMin){
+    toast("Ingresa al menos la Fecha o las Cel/mL antes de agregar al historial.","warn",4000);
+    return;
+  }
+  if(!pushAlgHist(data)) return;
+  // Limpia el slot single-record y reinicia el formulario, conservando sólo
+  // Fecha / Corrida_Larv / Modulo_Larv / Técnico para acelerar la siguiente entrada
+  const preserved = {
+    fecha:        data.fecha        || today(),
+    corrida_larv: data.corrida_larv || "",
+    modulo_larv:  data.modulo_larv  || "",
+    tec:          data.tec          || gcfg("tec","")
+  };
+  saveE(curMod, "algas", preserved, false);
+  const nNow = loadAlgHist().length;
+  toast("✅ Agregado al historial · "+nNow+"/"+ALGHIST_MAX+" pendiente(s) de sincronizar","ok",4000);
+  renderAlgas();
+  updateDots(); updateSyncUI();
+}
+
+function removeAlgHistConfirm(id){
+  if(!confirm("¿Eliminar este registro del historial?\nNo afecta a registros ya sincronizados.")) return;
+  removeAlgHistById(id);
+  toast("Registro eliminado del historial","ok",2500);
+  renderAlgas();
+  updateDots(); updateSyncUI();
+}
+
+function clearAlgHistConfirm(){
+  const list = loadAlgHist();
+  if(list.length === 0){ toast("El historial ya está vacío","info",2000); return; }
+  if(!confirm("¿Vaciar TODO el historial? Se perderán "+list.length+" registro(s) que aún no fueron sincronizados.")) return;
+  clearAlgHist();
+  toast("Historial vaciado","ok",2500);
+  renderAlgas();
+  updateDots(); updateSyncUI();
+}
+
+/* ══════════════════════════════════════════
+   RENDER ALL FICHAS
+══════════════════════════════════════════ */
+function renderAll(){
+  if(isLabMod(curMod)){
+    renderAlgas();
+    updateDots();
+    selTab("algas");
+  } else {
+    FICHAS.forEach(fid => renderFicha(fid));
+    updateDots();
+    selTab("calidad");
+  }
+}
+
+/* ── FICHA 1: CALIDAD LARVARIA ─────────────
+   HTML fields → Google Sheet "Datos Larvicultura" col mapping:
+   e_i   → Estadío
+   ll_i  → Intestino_Lleno   sl_i → Intestino_Semilleno  va_i → Intestino_Vacio
+   df_i  → Deformidad        rt_i → Retraso               mo_i → % Mortalidad
+   hg_i  → Hongos            nv_i → % No_viables          op_i → % Opacidad
+   lp_i  → Lípidos           fl_i  → Flácidez
+   nc_i  → Necrosis          cb_i → Canibalismo            pr_i → Parásitos
+   cos_i → % Actividad       ta_i → Talla                  es_i → Estrés
+────────────────────────────────────────── */
+function renderCalidad(){
+  const fp = document.getElementById("fp-calidad");
+  const e  = loadE(curMod,"calidad"); const d = e?e.data:{};
+  const tec = escapeHtml(d.tec || gcfg("tec",""));
+  const _tqn = loadTqNames(curMod);
+
+  const rows = Array.from({length:TQS},(_,i)=>`<tr>
+    <td class="tqc">${tqCell(curMod,i,_tqn)}</td>
+    <td><input type="text" name="e_${i}" value="${vl(d,"e_"+i)}" placeholder="N5…M3" style="min-width:58px"></td>
+    <td><input type="number" name="ll_${i}" value="${vl(d,"ll_"+i)}" min="0" max="100" step="0.1"></td>
+    <td><input type="number" name="sl_${i}" value="${vl(d,"sl_"+i)}" min="0" max="100" step="0.1"></td>
+    <td><input type="number" name="va_${i}" value="${vl(d,"va_"+i)}" min="0" max="100" step="0.1"></td>
+    <td><input type="number" name="df_${i}" value="${vl(d,"df_"+i)}" min="0" max="100" step="0.1"></td>
+    <td><input type="number" name="rt_${i}" value="${vl(d,"rt_"+i)}" min="0" max="100" step="0.1"></td>
+    <td><input type="number" name="mo_${i}" value="${vl(d,"mo_"+i)}" min="0" max="100" step="0.1"></td>
+    <td><input type="number" name="hg_${i}" value="${vl(d,"hg_"+i)}" min="0" max="100" step="0.1"></td>
+    <td><input type="number" name="nv_${i}" value="${vl(d,"nv_"+i)}" min="0" max="100" step="0.1"></td>
+    <td><input type="number" name="op_${i}" value="${vl(d,"op_"+i)}" min="0" max="100" step="0.1"></td>
+    <td><input type="number" name="lp_${i}" value="${vl(d,"lp_"+i)}" min="0" max="100" step="0.1"></td>
+    <td><input type="number" name="fl_${i}" value="${vl(d,"fl_"+i)}" min="0" max="100" step="0.1"></td>
+    <td><input type="number" name="nc_${i}" value="${vl(d,"nc_"+i)}" min="0" max="100" step="0.1"></td>
+    <td><input type="number" name="cb_${i}" value="${vl(d,"cb_"+i)}" min="0" max="100" step="0.1"></td>
+    <td><input type="number" name="pr_${i}" value="${vl(d,"pr_"+i)}" min="0" max="100" step="0.1"></td>
+    <td><input type="number" name="cos_${i}" value="${vl(d,"cos_"+i)}" min="0" max="100" step="0.1" title="% Actividad"></td>
+    <td><input type="number" name="ta_${i}" value="${vl(d,"ta_"+i)}" step="0.01"></td>
+    <td><input type="number" name="es_${i}" value="${vl(d,"es_"+i)}" min="0" max="100" step="0.1"></td>
+  </tr>`).join("");
+
+  fp.innerHTML=`<div class="fc">
+    <div class="fc-h">
+      <div class="fc-t">🔬 Registro Sanidad y Calidad de Larvas</div>
+      ${sspill(getStatus(curMod,"calidad"))}
+    </div>
+    <div class="fc-b">
+      ${nuevoRegBanner("calidad")}
+      <div class="meta">
+        <div class="mf"><label>Módulo</label><input value="${mLabel(curMod)}" readonly></div>
+        <div class="mf"><label>Corrida</label><input name="corrida" value="${ev(d,'corrida')}" placeholder="Ej. 552"></div>
+        <div class="mf"><label>Fecha</label><input type="date" name="fecha" value="${d.fecha||today()}"></div>
+        <div class="mf"><label>Hora</label><input type="time" name="hora" value="${ev(d,'hora',nowT())}"></div>
+      </div>
+      <div class="tw"><table class="ft">
+        <thead>
+          <tr>
+            <th rowspan="3" class="tqh">TQ</th>
+            <th rowspan="3">Estadio</th>
+            <th colspan="9" class="thg">SANIDAD — Estadios N5–M3</th>
+            <th colspan="5" class="thg2">SANIDAD — Post-larva</th>
+            <th colspan="3" class="thg3">CALIDAD</th>
+          </tr>
+          <tr>
+            <th colspan="3">Intestino</th>
+            <th colspan="3">Morfología General</th>
+            <th colspan="3">Otros</th>
+            <th>Hepatopáncreas</th>
+            <th colspan="4">Morfología PL</th>
+            <th>%Actividad</th><th>Talla</th><th>%Estrés</th>
+          </tr>
+          <tr>
+            <th>%Llenas</th><th>%Semillenas</th><th>%Vacías</th>
+            <th>%Deformidad</th><th>%Retraso</th><th>%Mortalidad</th>
+            <th>%Hongos</th><th>%NoViab</th><th>%Opac</th>
+            <th>%Lípidos</th>
+            <th>%Flacidez</th><th>%Necrosis</th><th>%Canibalismo</th><th>%Parásitos</th>
+            <th>%Act</th><th>Talla</th><th>%Estrés</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <div class="ffoot">
+        <div class="ff"><label>Técnico Responsable</label>
+          <input name="tec" value="${tec}" placeholder="Nombre del técnico"></div>
+      </div>
+      ${saveArea("calidad")}
+    </div>
+  </div>`;
+}
+
+/* ── FICHA 2: PL GRAMO EXTERNO ─────────────
+   pg_i → Plg (col 22 "Datos Larvicultura")
+   ta_i → Talla (col 23)
+   lt_i → Lote (col 7)
+────────────────────────────────────────── */
+function renderPlg(){
+  const fp = document.getElementById("fp-plg");
+  const e  = loadE(curMod,"plg"); const d = e?e.data:{};
+  const tec = escapeHtml(d.tec || gcfg("tec",""));
+  const _tqn = loadTqNames(curMod);
+
+  const rows = Array.from({length:TQS},(_,i)=>`<tr>
+    <td class="tqc">${tqCell(curMod,i,_tqn)}</td>
+    <td><input type="text" name="e_${i}" value="${vl(d,"e_"+i)}" placeholder="PL12…" style="min-width:58px"></td>
+    <td><input type="number" name="pg_${i}" value="${vl(d,"pg_"+i)}" step="0.001" placeholder="0.000"></td>
+    <td><input type="text" name="lt_${i}" value="${vl(d,"lt_"+i)}" placeholder="Lote"></td>
+    <td><input type="number" name="ta_${i}" value="${vl(d,"ta_"+i)}" step="0.01" placeholder="mm"></td>
+  </tr>`).join("");
+
+  fp.innerHTML=`<div class="fc">
+    <div class="fc-h">
+      <div class="fc-t">⚖️ PL Gramo Externo</div>
+      ${sspill(getStatus(curMod,"plg"))}
+    </div>
+    <div class="fc-b">
+      ${nuevoRegBanner("plg")}
+      <div class="meta">
+        <div class="mf"><label>Módulo</label><input value="${mLabel(curMod)}" readonly></div>
+        <div class="mf"><label>Fecha</label><input type="date" name="fecha" value="${d.fecha||today()}"></div>
+        <div class="mf"><label>Corrida</label><input name="corrida" value="${ev(d,'corrida')}" placeholder="Ej. 552"></div>
+        <div class="mf"><label>N° Siembra</label><input name="siembra" value="${ev(d,'siembra')}" placeholder="1"></div>
+      </div>
+      <div class="tw"><table class="ft">
+        <thead>
+          <tr>
+            <th class="tqh">Tanque</th>
+            <th>Estadio</th>
+            <th>PL / Gramo</th>
+            <th>Lote</th>
+            <th>Talla (mm)</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <div class="ffoot">
+        <div class="ff"><label>Técnico Responsable</label>
+          <input name="tec" value="${tec}" placeholder="Nombre del técnico"></div>
+      </div>
+      ${saveArea("plg")}
+    </div>
+  </div>`;
+  // no auto-save — manual only
+}
+
+/* ── FICHA 3: PARÁMETROS ───────────────────
+   od_i_t → OD  (col 5 "Control_Tanque")
+   tc_i_t → Temperatura (col 6)
+   obs    → Observacion (col 7, first row only)
+────────────────────────────────────────── */
+function renderParams(){
+  const fp = document.getElementById("fp-params");
+  const e  = loadE(curMod,"params"); const d = e?e.data:{};
+  const tec = escapeHtml(d.tec || gcfg("tec",""));
+  const _tqn = loadTqNames(curMod);
+
+  const th1 = PTIMES.map(t=>`<th colspan="2" class="thgt" style="min-width:80px">${t}</th>`).join("");
+  const th2 = PTIMES.map(()=>`<th>OD</th><th>°C</th>`).join("");
+
+  const rows = Array.from({length:TQS},(_,i)=>{
+    const cells = PTIMES.map(t=>
+      `<td><input class="pinp" type="number" name="od_${i}_${t}" value="${escapeHtml(d["od_"+i+"_"+t]||"")}" step="0.01" placeholder="-" oninput="chkParam(this,3,10)"></td>
+       <td><input class="pinp" type="number" name="tc_${i}_${t}" value="${escapeHtml(d["tc_"+i+"_"+t]||"")}" step="0.01" placeholder="-" oninput="chkParam(this,20,40)"></td>`
+    ).join("");
+    return `<tr><td class="tqc">${tqCell(curMod,i,_tqn)}</td>${cells}</tr>`;
+  }).join("");
+
+  fp.innerHTML=`<div class="fc">
+    <div class="fc-h">
+      <div class="fc-t">🌡️ Parámetros en Tanques de Larvicultura</div>
+      ${sspill(getStatus(curMod,"params"))}
+    </div>
+    <div class="fc-b">
+      <div class="meta">
+        <div class="mf"><label>Módulo</label><input value="${mLabel(curMod)}" readonly></div>
+        <div class="mf"><label>Fecha</label><input type="date" name="fecha" value="${d.fecha||today()}"></div>
+        <div class="mf"><label>Corrida</label><input name="corrida" value="${ev(d,'corrida')}" placeholder="Ej. 552"></div>
+        <div class="mf"><label>Estadío</label><input name="estadio" value="${ev(d,'estadio')}" placeholder="Ej. PL1"></div>
+      </div>
+      <div class="tw"><table class="ft" style="font-size:10.5px">
+        <thead>
+          <tr><th class="tqh">TQ</th>${th1}</tr>
+          <tr><th class="tqh" style="background:var(--bg)"></th>${th2}</tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <div class="ffoot">
+        <div class="ff" style="min-width:260px"><label>Observaciones del turno</label>
+          <textarea name="obs" placeholder="Notas generales…">${escapeHtml(d.obs||"")}</textarea></div>
+        <div class="ff"><label>Técnico Responsable</label>
+          <input name="tec" value="${tec}" placeholder="Nombre del técnico"></div>
+      </div>
+      ${saveArea("params")}
+    </div>
+  </div>`;
+  chkParamAll();
+}
+
+/* ── Alertas OD/°C fuera de rango ────────
+   OD: alerta si < 3 o > 10
+   °C: alerta si < 20 o > 40
+   Fondo rojo suave, valor legible.
+────────────────────────────────────────── */
+function chkParam(el, lo, hi){
+  if(el.value === ""){
+    el.classList.remove("pinp-alert"); return;
+  }
+  const v = parseFloat(el.value);
+  if(!isFinite(v)){ el.classList.remove("pinp-alert"); return; }
+  el.classList.toggle("pinp-alert", v < lo || v > hi);
+}
+function chkParamAll(){
+  const fp = document.getElementById("fp-params");
+  if(!fp) return;
+  fp.querySelectorAll('input[name^="od_"]').forEach(el => chkParam(el, 3, 10));
+  fp.querySelectorAll('input[name^="tc_"]').forEach(el => chkParam(el, 20, 40));
+}
+
+/* ── FICHA 4: POBLACIÓN ────────────────────
+   po_i  → Población (col 6 "Datos Larvicultura")
+   sv_i  → Supervivencia (col 4)
+   lt_i  → Lote (col 7, used if PLG has no lote)
+   e_i   → Estadío (col 8, used if Calidad has no estadio)
+   sal_i → Salinidad (col 27)
+   mort_d→ LOCAL ONLY — not sent to Google Sheets
+────────────────────────────────────────── */
+function renderPoblacion(){
+  const fp = document.getElementById("fp-poblacion");
+  const e  = loadE(curMod,"poblacion"); const d = e?e.data:{};
+  const tec = escapeHtml(d.tec || gcfg("tec",""));
+  const _tqn = loadTqNames(curMod);
+
+  const rows = Array.from({length:TQS},(_,i)=>`<tr>
+    <td class="tqc">${tqCell(curMod,i,_tqn)}</td>
+    <td><input type="number" name="po_${i}" value="${vl(d,"po_"+i)}" placeholder="Ej: 4300" oninput="rcPob()" title="Ingrese en miles. Ej: 4300 = 4,300,000"></td>
+    <td><input type="text" name="e_${i}" value="${vl(d,"e_"+i)}" placeholder="N5…PL"></td>
+    <td><input type="number" name="sv_${i}" value="${vl(d,"sv_"+i)}" min="0" max="100" step="0.01" placeholder="%"></td>
+    <td><input type="text" name="lt_${i}" value="${vl(d,"lt_"+i)}" placeholder="Lote"></td>
+    <td><input type="number" name="sal_${i}" value="${vl(d,"sal_"+i)}" step="0.01" placeholder="ppt"></td>
+  </tr>`).join("");
+
+  fp.innerHTML=`<div class="fc">
+    <div class="fc-h">
+      <div class="fc-t">🧮 Población Laboratorio</div>
+      ${sspill(getStatus(curMod,"poblacion"))}
+    </div>
+    <div class="fc-b">
+      ${nuevoRegBanner("poblacion")}
+      <div class="meta">
+        <div class="mf"><label>Módulo</label><input value="${mLabel(curMod)}" readonly></div>
+        <div class="mf"><label>Fecha</label><input type="date" name="fecha" value="${d.fecha||today()}"></div>
+        <div class="mf"><label>Hora</label><input type="time" name="hora" value="${ev(d,'hora',nowT())}"></div>
+        <div class="mf"><label>Corrida</label><input name="corrida" value="${ev(d,'corrida')}" placeholder="Ej. 552"></div>
+        <div class="mf"><label>CTA Sembrada</label><input type="number" name="cta" value="${d.cta||""}" placeholder="Cantidad"></div>
+        <div class="mf"><label>N° Siembra</label><input name="siembra" value="${ev(d,'siembra')}" placeholder="1"></div>
+      </div>
+      <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:7px 12px;margin-bottom:10px;font-size:11px;color:#065f46;display:flex;align-items:center;gap:8px">
+        <span style="font-size:16px">ℹ️</span>
+        <span><strong>Multiplicador ×1000:</strong> Ingrese el valor en miles. Ej: escribir <strong>4300</strong> → se envía <strong>4.300.000,00</strong> a Google Sheets.</span>
+      </div>
+      <div class="tw"><table class="ft">
+        <thead>
+          <tr>
+            <th class="tqh">Tanque</th>
+            <th>Población <span style="font-weight:400;font-size:8px;opacity:.8">(en miles)</span></th>
+            <th>Estadío</th>
+            <th>% Supervivencia</th>
+            <th>Lote</th>
+            <th>Salinidad</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr class="tr-tot">
+            <td style="background:var(--bg);color:#fff;font-family:var(--mono);font-weight:700;padding:5px 8px">TOTAL</td>
+            <td id="td-tot">—</td><td colspan="4"></td>
+          </tr>
+        </tfoot>
+      </table></div>
+      <div class="meta" style="margin-top:12px">
+        <div class="mf"><label>Total Población</label>
+          <input type="number" name="total_p" id="inp-tot" value="${d.total_p||""}" readonly
+            style="background:#f0fdf4;color:#065f46;font-weight:700;font-family:var(--mono)"></div>
+        <div class="mf"><label>% Sobrevivencia Global</label>
+          <input type="number" name="sobrev" value="${d.sobrev||""}" step="0.01" placeholder="%"></div>
+        <div class="mf"><label>% Mort. Diaria</label>
+          <input type="number" name="mort_d" value="${d.mort_d||""}" step="0.01" placeholder="%"></div>
+      </div>
+      <div class="ffoot">
+        <div class="ff" style="min-width:260px"><label>Observaciones</label>
+          <textarea name="obs" placeholder="Notas adicionales…">${escapeHtml(d.obs||"")}</textarea></div>
+        <div class="ff"><label>Técnico Responsable</label>
+          <input name="tec" value="${tec}" placeholder="Nombre del técnico"></div>
+      </div>
+      ${saveArea("poblacion")}
+    </div>
+  </div>`;
+  rcPob();
+}
+
+function rcPob(){
+  let tot=0;
+  for(let i=0;i<TQS;i++){
+    const el=document.querySelector(`[name="po_${i}"]`);
+    if(el && el.value) tot += parseFloat(el.value)||0;
+  }
+  const realTot = tot * 1000;
+  const td=document.getElementById("td-tot"), inp=document.getElementById("inp-tot");
+  if(td){
+    td.textContent = tot.toLocaleString("es-EC");
+    const span = document.createElement("span");
+    span.style.cssText = "font-size:9px;color:#0f766e;font-weight:400";
+    span.textContent = " (→ " + realTot.toLocaleString("es-EC",{minimumFractionDigits:2}) + " real)";
+    td.appendChild(span);
+  }
+  if(inp) inp.value=tot;
+}
+
+
+/* ══════════════════════════════════════════
+   PDF DOWNLOAD — A4 con código verificador
+══════════════════════════════════════════ */
+
+function genCodigo(fid, mod, fecha){
+  const ts   = Date.now();
+  const seed = (ts & 0xFFFFFF) ^ (mod * 7919) ^ (fid.charCodeAt(0) * 1031);
+  const hex  = Math.abs(seed).toString(16).toUpperCase().padStart(6,'0').slice(-6);
+  const abb  = {calidad:'CAL',plg:'PLG',params:'PAR',poblacion:'POB'}[fid]||'FIC';
+  const d    = (fecha||today()).replace(/-/g,'');
+  return abb + String(mod).padStart(2,'0') + '-' + d + '-' + hex;
+}
+
+/* ── Nombre por defecto del PDF al guardar ─────────────────
+   Formato: <CL|PL|PA|PB>_<D/M/YY>_<MOD>[-<corrida>]
+   Ej. CL_5/4/26_M01-544
+   El navegador sustituye automáticamente "/" por "_" o "-" al
+   guardar el archivo (Windows/macOS/Linux), conservando la lectura. */
+function pdfFilename(fid, mod, fecha, corrida){
+  const codes  = { calidad:'CL', plg:'PL', params:'PA', poblacion:'PB' };
+  const code   = codes[fid] || 'FIC';
+  let dStr     = '';
+  if(fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha)){
+    const p = fecha.split('-');
+    dStr = parseInt(p[2],10) + '/' + parseInt(p[1],10) + '/' + p[0].slice(2);
+  } else {
+    const t = new Date();
+    dStr = t.getDate() + '/' + (t.getMonth()+1) + '/' + String(t.getFullYear()).slice(2);
+  }
+  const modStr = mLabel(mod);
+  // Limpia chars que rompen filename en cualquier OS
+  const cor    = sanitizeStr(corrida || '').replace(/[\\\/:*?"<>|]/g,'').trim();
+  const corPart = cor ? '-' + cor : '';
+  return code + '_' + dStr + '_' + modStr + corPart;
+}
+
+function pdfCss(fid){
+  /* A4 landscape = 297×210mm. Margins 7mm top/bottom, 8mm sides → usable 281×196mm.
+     KEY FIX: Use mm units so the browser print engine maps content 1:1 to paper.
+     Without mm units, the browser renders at screen pixels then shrinks to fit A4,
+     causing the "content fills 1/3 of page" bug on mobile/desktop print.
+     ── print-color-adjust: exact ── obliga al motor de impresión a respetar
+     fondos y colores aunque el usuario NO active "Background graphics" en el
+     diálogo de imprimir (Chrome/Edge/Safari). En navegadores antiguos cae al
+     prefijo -webkit-. */
+  const isP = fid === 'params';
+  const isC = fid === 'calidad';
+  return `
+@page{size:A4 landscape;margin:5mm 8mm}
+@page :first{size:A4 landscape;margin:5mm 8mm}
+*{box-sizing:border-box;margin:0;padding:0;
+  -webkit-print-color-adjust:exact !important;
+  print-color-adjust:exact !important;
+  color-adjust:exact !important;}
+html,body{background:#fff;font-family:Arial,Helvetica,sans-serif;font-size:8pt;color:#111;width:281mm;margin:0 auto;
+  -webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;}
+.ppage{width:281mm;min-height:200mm;padding:0;display:flex;flex-direction:column}
+@media print{
+  html,body{width:281mm;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;}
+  .ppage{width:281mm;min-height:200mm;page-break-after:always}
+  .ppage:last-child{page-break-after:auto}
+  /* Reforzado por si el usuario tiene desactivado "Background graphics" */
+  *,*::before,*::after{
+    -webkit-print-color-adjust:exact !important;
+    print-color-adjust:exact !important;
+    color-adjust:exact !important;
+  }
+}
+/* HEADER */
+.ph{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #09192e;padding-bottom:3px;margin-bottom:4px}
+.ph-brand .co{font-size:11pt;font-weight:800;color:#09192e}
+.ph-brand .su{font-size:6.5pt;color:#64748b;text-transform:uppercase;letter-spacing:.7px}
+.ph-center{text-align:center;flex:1;padding:0 10px}
+.ph-center .doc-code{font-family:monospace;font-size:8pt;font-weight:800;color:#09192e;letter-spacing:.5px;background:#f0fdfa;border:1.5px solid #99f6e4;border-radius:3px;padding:2px 8px;display:inline-block}
+.ph-right{text-align:right}
+.ph-right .mod{font-size:11pt;font-weight:800;color:#09192e}
+.ph-right .mods{font-size:6.5pt;color:#64748b}
+.ftitle{font-size:9pt;font-weight:800;color:#fff;background:#09192e;padding:3px 10px;margin-bottom:4px;border-radius:2px;display:flex;align-items:center;gap:5px}
+/* META */
+.mgrid,.mgrid2{display:flex;flex-wrap:wrap;gap:2px 18px;margin-bottom:4px}
+.mf{display:flex;flex-direction:column;gap:0px}
+.mf label{font-size:6.5pt;text-transform:uppercase;letter-spacing:.4px;color:#0f766e;font-weight:800}
+.mf span{font-size:8.5pt;font-weight:600;color:#0f172a;border-bottom:1px solid #e2e8f0;padding-bottom:1px;min-width:60px}
+/* TABLE */
+table{border-collapse:collapse;width:100%}
+th{background:#0f2942;color:#fff;padding:${isP?'2px 3px':isC?'2px 2px':'3px 4px'};text-align:center;font-size:${isP?'6.5pt':isC?'5.5pt':'7.5pt'};font-weight:700;border:1px solid #1e3a5f;white-space:nowrap}
+td{border:1px solid #d1d5db;padding:${isP?'2px 2px':isC?'2px 2px':'3px 4px'};text-align:center;color:#111;font-size:${isP?'7pt':isC?'6.5pt':'8pt'};white-space:nowrap}
+tr:nth-child(even) td{background:#f0fdfa}
+.tqc{background:#09192e!important;color:#fff!important;font-weight:800;font-size:${isP?'7pt':'7.5pt'};width:28px;min-width:28px}
+.thg {background:#0d6b5e!important;color:#fff!important;font-size:${isC?'5.5pt':'7pt'}!important;font-weight:800!important;letter-spacing:.2px!important}
+.thg2{background:#312e81!important;color:#e0e7ff!important;font-size:${isC?'5.5pt':'7pt'}!important;font-weight:800!important}
+.thg3{background:#166534!important;color:#dcfce7!important;font-size:${isC?'5.5pt':'7pt'}!important;font-weight:800!important}
+.thgt{background:#0d6b5e!important;color:#fff!important;font-size:${isP?'6.5pt':'7pt'}!important;font-weight:700!important}
+.empty{color:#9ca3af;font-style:italic;font-size:7pt}
+/* OBS */
+.obs-block{border:1px solid #e2e8f0;border-radius:3px;padding:4px 10px;margin-top:4px;background:#f8fafc}
+.obs-block .lbl{font-size:6.5pt;text-transform:uppercase;color:#0f766e;font-weight:800;margin-bottom:1px}
+.obs-block .txt{font-size:8pt;color:#0f172a;line-height:1.4}
+/* FOOTER */
+.spacer{flex:1;min-height:2px}
+.pfoot{border-top:1.5px solid #cbd5e1;padding-top:4px;display:flex;align-items:flex-end;justify-content:space-between;margin-top:4px}
+.code-box{font-family:monospace;font-size:7pt;font-weight:800;color:#09192e;background:#f0fdfa;padding:3px 8px;border-radius:3px;border:1.5px solid #99f6e4;letter-spacing:.6px}
+.ts-txt{font-size:6.5pt;color:#9ca3af;margin-top:1px}
+.rev-line{text-align:center;font-size:6.5pt;color:#64748b;letter-spacing:.3px;margin-top:4px;padding-top:3px;border-top:1px dashed #e2e8f0}
+/* CHARTS PAGE — fits ONE A4 landscape page */
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;flex:1}
+.chart-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:5px 8px;display:flex;flex-direction:column;max-height:86mm}
+.chart-label{font-size:7pt;font-weight:800;color:#1e293b;text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px}
+.chart-svg-wrap{flex:1;display:flex;align-items:flex-end;max-height:72mm;overflow:hidden}
+.chart-svg-wrap svg{display:block;width:100%}
+.metrics-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.metric-card{background:linear-gradient(135deg,#f0fdfa,#ecfdf5);border:1.5px solid #6ee7b7;border-radius:6px;padding:5px 8px;text-align:center;flex:1;min-width:70px}
+.metric-card .mc-lbl{font-size:5.5pt;color:#0f766e;font-weight:800;text-transform:uppercase;letter-spacing:.3px}
+.metric-card .mc-val{font-size:12pt;font-weight:800;color:#09192e;margin:1px 0}
+.metric-card .mc-unit{font-size:5.5pt;color:#64748b}
+  `;
+}
+
+function pdfHeader(fid, mod, d){
+  const names={
+    calidad:'Registro Sanidad y Calidad de Larvas',
+    plg:'PL Gramo Externo',
+    params:'Parámetros en Tanques — OD y Temperatura',
+    poblacion:'Población Laboratorio'
+  };
+  const icons={calidad:'🔬',plg:'⚖️',params:'🌡️',poblacion:'🧮'};
+  const docCodes={
+    calidad:'OMR-LAB-M-FOR-039',
+    plg:'OMR-LAB-M-FOR-040',
+    params:'OMR-LAB-M-FOR-045',
+    poblacion:'OMR-LAB-M-FOR-040'
+  };
+  const docCode = docCodes[fid] || '';
+  // Extra meta row for params
+  const extraMeta = fid==='params'
+    ? `<div class="mf"><label>Estadío</label><span>${escapeHtml(String(d.estadio||'—'))}</span></div>
+       <div class="mf"><label>Hora registro</label><span>${escapeHtml(String(d.hora||'—'))}</span></div>`
+    : `<div class="mf"><label>Hora</label><span>${escapeHtml(String(d.hora||'—'))}</span></div>
+       <div class="mf" style="visibility:hidden"></div>`;
+  return `<div class="ph">
+    <div class="ph-brand">
+      <div class="co">OMARSA · Larvicultura</div>
+      <div class="su">Sistema de Fichas Larvicultura</div>
+    </div>
+    ${docCode ? '<div class="ph-center"><span class="doc-code">' + docCode + '</span></div>' : ''}
+    <div class="ph-right">
+      <div class="mod">${mLabel(mod)}</div>
+      <div class="mods">${mod === CIO_MOD ? 'Módulo CIO' : mod === LAB_MOD ? 'Lab. Algas' : 'Módulo '+mod}</div>
+    </div>
+  </div>
+  <div class="ftitle">${icons[fid]||''} ${names[fid]||fid}</div>
+  <div class="mgrid">
+    <div class="mf"><label>${mod===CIO_MOD?'CIO':mod===LAB_MOD?'Lab. Algas':'Módulo'}</label><span>${mLabel(mod)}</span></div>
+    <div class="mf"><label>Fecha</label><span>${d.fecha||today()}</span></div>
+    <div class="mf"><label>Corrida</label><span>${escapeHtml(String(d.corrida||'—'))}</span></div>
+    <div class="mf"><label>Técnico</label><span>${escapeHtml(String(d.tec||gcfg('tec','—')))}</span></div>
+    ${extraMeta}
+  </div>`;
+}
+
+function pdfFooter(codigo, tsStr, tec, fid){
+  const revLines={
+    calidad:'Revisión: 002 — Vigencia: 21/11/2025',
+    params:'Versión 0 — Fecha de aprobación 1-ago.-2015'
+  };
+  const revHtml = revLines[fid]
+    ? `<div class="rev-line">${revLines[fid]}</div>`
+    : '';
+  return `<div class="pfoot">
+    <div>
+      <div style="font-size:6pt;color:#64748b;margin-bottom:2px;text-transform:uppercase;letter-spacing:.4px">Código verificador</div>
+      <div class="code-box">${codigo}</div>
+      <div class="ts-txt" style="margin-top:2px">Generado el ${tsStr}</div>
+    </div>
+    <div style="text-align:center;min-width:140px">
+      <div style="border-top:1.5px solid #0f172a;padding-top:3px;margin-top:12px;font-size:6.5pt;font-weight:700;color:#0f172a">
+        ${escapeHtml(tec||'Técnico Responsable')}
+      </div>
+      <div style="font-size:5pt;color:#64748b;margin-top:1px">Firma del Responsable</div>
+    </div>
+    <div style="text-align:center;min-width:120px">
+      <div style="border-top:1.5px solid #0f172a;padding-top:3px;margin-top:12px;font-size:6.5pt;font-weight:700;color:#0f172a">
+        Supervisor
+      </div>
+      <div style="font-size:5pt;color:#64748b;margin-top:1px">Visto Bueno</div>
+    </div>
+  </div>${revHtml}`;
+}
+
+function pdfVal(v){ return (v!==undefined&&v!==''&&v!==null)?String(v):'<span class="empty">—</span>'; }
+
+function pdfTableCalidad(d, mod, tqN){
+  const KEYS=['e','ll','sl','va','df','rt','mo','hg','nv','op','lp','fl','nc','cb','pr','cos','ta','es'];
+  const rows=Array.from({length:TQS},(_,i)=>{
+    const hasAny = KEYS.some(k=>{const v=d[k+'_'+i]; return v!==undefined&&v!==''&&v!==null;});
+    if(!hasAny) return '';
+    return `<tr>
+    <td class="tqc">${escapeHtml(tqN(i))}</td>
+    <td>${pdfVal(d['e_'+i])}</td>
+    <td>${pdfVal(d['ll_'+i])}</td><td>${pdfVal(d['sl_'+i])}</td><td>${pdfVal(d['va_'+i])}</td>
+    <td>${pdfVal(d['df_'+i])}</td><td>${pdfVal(d['rt_'+i])}</td><td>${pdfVal(d['mo_'+i])}</td>
+    <td>${pdfVal(d['hg_'+i])}</td><td>${pdfVal(d['nv_'+i])}</td><td>${pdfVal(d['op_'+i])}</td>
+    <td>${pdfVal(d['lp_'+i])}</td>
+    <td>${pdfVal(d['fl_'+i])}</td><td>${pdfVal(d['nc_'+i])}</td>
+    <td>${pdfVal(d['cb_'+i])}</td><td>${pdfVal(d['pr_'+i])}</td>
+    <td>${pdfVal(d['cos_'+i])}</td><td>${pdfVal(d['ta_'+i])}</td><td>${pdfVal(d['es_'+i])}</td>
+  </tr>`;}).join('');
+  return `<table>
+    <thead>
+      <tr><th rowspan="3">TQ</th><th rowspan="3">Estadio</th>
+        <th colspan="9" class="thg">SANIDAD — Estadios N5–M3</th>
+        <th colspan="5" class="thg2">SANIDAD — Post-larva</th>
+        <th colspan="3" class="thg3">CALIDAD</th></tr>
+      <tr><th colspan="3">Intestino</th><th colspan="3">Morfología</th><th colspan="3">Otros</th>
+        <th>Hepatop.</th><th colspan="4">Morf. PL</th>
+        <th>%Act.</th><th>Talla</th><th>%Estrés</th></tr>
+      <tr><th>%Ll</th><th>%Semi</th><th>%Vac</th>
+        <th>%Def</th><th>%Ret</th><th>%Mort</th>
+        <th>%Hong</th><th>%NoV</th><th>%Opac</th>
+        <th>%Líp</th>
+        <th>%Flac</th><th>%Nec</th><th>%Can</th><th>%Par</th>
+        <th>%Act</th><th>Talla</th><th>%Es</th></tr>
+    </thead><tbody>${rows}</tbody></table>`;
+}
+
+function pdfTablePlg(d, mod, tqN){
+  const rows=Array.from({length:TQS},(_,i)=>{
+    const has = ['e','pg','lt','ta'].some(k=>{const v=d[k+'_'+i];return v!==undefined&&v!==''&&v!==null;});
+    if(!has) return '';
+    return `<tr>
+    <td class="tqc">${escapeHtml(tqN(i))}</td>
+    <td>${pdfVal(d['e_'+i])}</td><td>${pdfVal(d['pg_'+i])}</td>
+    <td>${pdfVal(d['lt_'+i])}</td><td>${pdfVal(d['ta_'+i])}</td>
+  </tr>`;
+  }).join('');
+  return `<table>
+    <thead><tr><th>TQ</th><th>Estadio</th><th>PL / Gramo</th><th>Lote</th><th>Talla (mm)</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+function pdfTableParams(d, mod, tqN){
+  const th1 = PTIMES.map(t=>`<th colspan="2" class="thgt">${t}</th>`).join('');
+  const th2 = PTIMES.map(()=>'<th>OD</th><th>°C</th>').join('');
+  const rows = Array.from({length:TQS},(_,i)=>{
+    const hasData = PTIMES.some(t=> (d['od_'+i+'_'+t]||'')!=='' || (d['tc_'+i+'_'+t]||'')!=='');
+    if(!hasData) return '';
+    const cells = PTIMES.map(t=>`<td>${pdfVal(d['od_'+i+'_'+t])}</td><td>${pdfVal(d['tc_'+i+'_'+t])}</td>`).join('');
+    return `<tr><td class="tqc">${escapeHtml(tqN(i))}</td>${cells}</tr>`;
+  }).join('');
+  return `<table style="table-layout:fixed;width:100%">
+    <thead>
+      <tr><th style="min-width:26px;width:26px">TQ</th>${th1}</tr>
+      <tr><th></th>${th2}</tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function pdfTablePoblacion(d, mod, tqN){
+  let tot=0;
+  for(let i=0;i<TQS;i++) tot+=(parseFloat(d['po_'+i])||0);
+  const totReal = tot * 1000;
+  const rows=Array.from({length:TQS},(_,i)=>{
+    const raw = d['po_'+i];
+    const hasVal = raw!==undefined&&raw!==''&&raw!==null;
+    const hasAny = hasVal || ['e','sv','lt','sal'].some(k=>{const v=d[k+'_'+i];return v!==undefined&&v!==''&&v!==null;});
+    if(!hasAny) return '';
+    const realVal = hasVal ? (parseFloat(raw)*1000).toLocaleString('es-EC',{minimumFractionDigits:2}) : '';
+    return `<tr>
+    <td class="tqc">${escapeHtml(tqN(i))}</td>
+    <td>${hasVal ? parseFloat(raw).toLocaleString('es-EC') : '<span class="empty">—</span>'}</td>
+    <td>${hasVal ? realVal : '<span class="empty">—</span>'}</td>
+    <td>${pdfVal(d['e_'+i])}</td>
+    <td>${pdfVal(d['sv_'+i])}</td>
+    <td>${pdfVal(d['lt_'+i])}</td>
+    <td>${pdfVal(d['sal_'+i])}</td>
+  </tr>`}).join('');
+  const extra=`<div class="mgrid2">
+    <div class="mf"><label>Total Ingresado</label><span>${tot.toLocaleString('es-EC')}</span></div>
+    <div class="mf"><label>Total Población (real)</label><span style="color:#047857;font-size:9pt;font-weight:800">${totReal.toLocaleString('es-EC',{minimumFractionDigits:2})}</span></div>
+    <div class="mf"><label>% Sobrevivencia</label><span>${pdfVal(d.sobrev)}</span></div>
+    <div class="mf"><label>% Mort. Diaria</label><span>${pdfVal(d.mort_d)}</span></div>
+    <div class="mf"><label>CTA Sembrada</label><span>${pdfVal(d.cta)}</span></div>
+  </div>`;
+  return `<table>
+    <thead><tr><th>TQ</th><th>Ingresado</th><th>Población Real (×1000)</th><th>Estadío</th><th>% Supervivencia</th><th>Lote</th><th>Salinidad</th></tr></thead>
+    <tbody>${rows}</tbody></table>${extra}`;
+}
+
+
+/* ── Charts page generator ───────────────── */
+function pdfChartsPage(fid, d, mod, tqN){
+  const vals = (keys) => {
+    const arr = [];
+    for(let i=0;i<TQS;i++){
+      const v = parseFloat(d[keys+'_'+i]);
+      if(isFinite(v)) arr.push({tq: tqN(i), v});
+    }
+    return arr;
+  };
+  const avg = (arr) => arr.length ? (arr.reduce((s,x)=>s+x.v,0)/arr.length).toFixed(2) : '—';
+  const fmax = (arr) => arr.length ? Math.max(...arr.map(x=>x.v)).toFixed(2) : '—';
+  const fmin = (arr) => arr.length ? Math.min(...arr.map(x=>x.v)).toFixed(2) : '—';
+  const cnt = (arr) => arr.length;
+
+  // Responsive SVG bar chart — viewBox scales, width:100% fills container
+  const svgBar = (data, label, color) => {
+    if(!data.length) return '<div class="chart-box"><div class="chart-label">'+escapeHtml(label)+'</div><div style="font-size:8pt;color:#94a3b8;text-align:center;padding:16px">Sin datos</div></div>';
+    const n = data.length;
+    const gap = 6;
+    const bw = Math.max(16, Math.min(40, Math.floor((500 - 50) / n) - gap));
+    const vbW = n * (bw + gap) + 50;
+    const vbH = 130;
+    const maxV = Math.max(...data.map(x=>x.v)) || 1;
+    const chartH = vbH - 36;
+    const bars = data.map((x,i) => {
+      const bh = Math.max(3, (x.v / maxV) * chartH);
+      const bx = 30 + i * (bw + gap);
+      const by = vbH - 18 - bh;
+      return '<rect x="'+bx+'" y="'+by+'" width="'+bw+'" height="'+bh+'" fill="'+color+'" rx="2"/>'
+        + '<text x="'+(bx+bw/2)+'" y="'+(by-3)+'" text-anchor="middle" font-size="8" fill="#0f172a" font-weight="700">'+x.v+'</text>'
+        + '<text x="'+(bx+bw/2)+'" y="'+(vbH-4)+'" text-anchor="middle" font-size="7" fill="#475569" font-weight="600">'+escapeHtml(x.tq)+'</text>';
+    }).join('');
+    const axis = '<line x1="28" y1="4" x2="28" y2="'+(vbH-18)+'" stroke="#cbd5e1" stroke-width="1"/>'
+      + '<line x1="28" y1="'+(vbH-18)+'" x2="'+(vbW-4)+'" y2="'+(vbH-18)+'" stroke="#cbd5e1" stroke-width="1"/>';
+    return '<div class="chart-box"><div class="chart-label">'+escapeHtml(label)+'</div>'
+      + '<div class="chart-svg-wrap"><svg viewBox="0 0 '+vbW+' '+vbH+'" xmlns="http://www.w3.org/2000/svg">'
+      + axis + bars + '</svg></div></div>';
+  };
+
+  const mCard = (label, value, unit) =>
+    '<div class="metric-card"><div class="mc-lbl">'+escapeHtml(label)+'</div>'
+    + '<div class="mc-val">'+value+'</div>'
+    + (unit ? '<div class="mc-unit">'+escapeHtml(unit)+'</div>' : '')
+    + '</div>';
+
+  let charts = '', metrics = '';
+
+  if(fid === 'calidad'){
+    const ll=vals('ll'), df=vals('df'), mo=vals('mo'), es=vals('es');
+    if(!ll.length && !df.length && !mo.length && !es.length) return '';
+    charts = '<div class="chart-grid">'
+      + svgBar(ll, '% Intestino Lleno', '#0d9488')
+      + svgBar(df, '% Deformidad', '#d97706')
+      + svgBar(mo, '% Mortalidad', '#dc2626')
+      + svgBar(es, '% Estrés', '#7c3aed')
+      + '</div>';
+    metrics = '<div class="metrics-row">'
+      + mCard('Prom. Intestino Lleno', avg(ll), '%')
+      + mCard('Prom. Deformidad', avg(df), '%')
+      + mCard('Prom. Mortalidad', avg(mo), '%')
+      + mCard('Max Estrés', fmax(es), '%')
+      + mCard('TQ registrados', cnt(ll), 'tanques')
+      + '</div>';
+  } else if(fid === 'plg'){
+    const pg=vals('pg'), ta=vals('ta');
+    if(!pg.length && !ta.length) return '';
+    charts = '<div class="chart-grid">'
+      + svgBar(pg, 'PL / Gramo', '#0369a1')
+      + svgBar(ta, 'Talla (mm)', '#7c3aed')
+      + '</div>';
+    metrics = '<div class="metrics-row">'
+      + mCard('Prom. PL/g', avg(pg), 'PL/g')
+      + mCard('Prom. Talla', avg(ta), 'mm')
+      + mCard('Min PL/g', fmin(pg), '')
+      + mCard('Max PL/g', fmax(pg), '')
+      + mCard('TQ registrados', cnt(pg), 'tanques')
+      + '</div>';
+  } else if(fid === 'params'){
+    const odArr=[], tcArr=[];
+    for(let i=0;i<TQS;i++){
+      let oSum=0, oN=0, tSum=0, tN=0;
+      PTIMES.forEach(t=>{
+        const ov=parseFloat(d['od_'+i+'_'+t]), tv=parseFloat(d['tc_'+i+'_'+t]);
+        if(isFinite(ov)){oSum+=ov;oN++;}
+        if(isFinite(tv)){tSum+=tv;tN++;}
+      });
+      if(oN) odArr.push({tq:tqN(i), v:+(oSum/oN).toFixed(2)});
+      if(tN) tcArr.push({tq:tqN(i), v:+(tSum/tN).toFixed(1)});
+    }
+    if(!odArr.length && !tcArr.length) return '';
+    charts = '<div class="chart-grid">'
+      + svgBar(odArr, 'Promedio OD por Tanque (mg/L)', '#0d9488')
+      + svgBar(tcArr, 'Promedio Temperatura por Tanque (°C)', '#d97706')
+      + '</div>';
+    metrics = '<div class="metrics-row">'
+      + mCard('Prom. OD global', avg(odArr), 'mg/L')
+      + mCard('Prom. Temp global', avg(tcArr), '°C')
+      + mCard('Min OD', fmin(odArr), 'mg/L')
+      + mCard('Max Temp', fmax(tcArr), '°C')
+      + mCard('TQ con lecturas', cnt(odArr), 'tanques')
+      + '</div>';
+  } else if(fid === 'poblacion'){
+    const po=[];
+    for(let i=0;i<TQS;i++){
+      const v=parseFloat(d['po_'+i]);
+      if(isFinite(v) && v>0) po.push({tq:tqN(i), v});
+    }
+    const sv=vals('sv');
+    if(!po.length && !sv.length) return '';
+    charts = '<div class="chart-grid">'
+      + svgBar(po, 'Población por Tanque (miles)', '#0369a1')
+      + svgBar(sv, '% Supervivencia por Tanque', '#16a34a')
+      + '</div>';
+    const totP = po.reduce((s,x)=>s+x.v,0);
+    metrics = '<div class="metrics-row">'
+      + mCard('Total Población', (totP*1000).toLocaleString('es-EC'), 'real')
+      + mCard('Prom. Supervivencia', avg(sv), '%')
+      + mCard('TQ activos', cnt(po), 'tanques')
+      + mCard('Mort. Diaria', pdfVal(d.mort_d), '%')
+      + '</div>';
+  }
+
+  if(!charts && !metrics) return '';
+
+  return '<div class="ppage" style="page-break-before:always;max-height:200mm;overflow:hidden">'
+    + '<div class="ftitle" style="margin-top:0">📊 Resumen y Métricas</div>'
+    + charts + metrics
+    + '<div class="spacer"></div>'
+    + '</div>';
+}
+
+function downloadPDF(fid){
+  // algas ficha has no PDF template; FICHAS only includes standard fichas
+  if(!FICHAS.includes(fid)) return;
+  const entry   = loadE(curMod, fid);
+  const d       = entry ? entry.data : {};
+  const ts      = new Date();
+  const tsStr   = ts.toLocaleString('es-EC',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const fecha   = d.fecha || today();
+  const codigo  = genCodigo(fid, curMod, fecha);
+  const tec     = d.tec || gcfg('tec','');
+  // Cache tank names once for all PDF table functions
+  const _tqn    = loadTqNames(curMod);
+  const tqN     = (i) => (_tqn[i] || ("TQ " + (i+1)));
+
+  // Dispatch table — add new fichas here only
+  const PDF_TABLE_FN = {
+    calidad:  pdfTableCalidad,
+    plg:      pdfTablePlg,
+    params:   pdfTableParams,
+    poblacion:pdfTablePoblacion
+  };
+  const tableHtml = (PDF_TABLE_FN[fid] || (()=>''))(d, curMod, tqN);
+
+  const obsHtml = d.obs
+    ? `<div class="obs-block"><div class="lbl">Observaciones del turno</div><div class="txt">${escapeHtml(String(d.obs))}</div></div>`
+    : '';
+
+  const chartsHtml = pdfChartsPage(fid, d, curMod, tqN);
+
+  // Nombre por defecto del PDF — el navegador lo usa como sugerencia al guardar
+  const corridaStr = sanitizeStr(d.corrida || '');
+  const fileName   = pdfFilename(fid, curMod, fecha, corridaStr);
+  const title      = escapeHtml(fileName);
+
+  // Mobile fix: use _printed flag to prevent duplicate print dialogs
+  const page = `<!DOCTYPE html><html lang="es"><head>
+    <meta charset="UTF-8">
+    <title>${title}</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <style>${pdfCss(fid)}</style>
+  </head><body>
+  <div class="ppage">
+    ${pdfHeader(fid, curMod, d)}
+    ${tableHtml}
+    ${obsHtml}
+    <div class="spacer"></div>
+    ${pdfFooter(codigo, tsStr, tec, fid)}
+  </div>
+  ${chartsHtml}
+  <script>
+    // Fija el título para que el navegador lo use como nombre por defecto
+    // al "Guardar como PDF" (Chrome/Edge/Firefox/Safari).
+    try { document.title = ${JSON.stringify(fileName)}; } catch(_){}
+    var _printed=false;
+    function doPrint(){if(_printed)return;_printed=true;setTimeout(function(){window.print();},350);}
+    if(document.readyState==='complete')doPrint();
+    else window.addEventListener('load',doPrint,{once:true});
+  <\/script></body></html>`;
+
+  const w = window.open('','_blank','width=1100,height=720');
+  if(!w){
+    toast('El navegador bloqueó la ventana emergente. Permite pop-ups para este sitio.','warn',6000);
+    return;
+  }
+  w.document.write(page);
+  w.document.close();
+  // Refuerzo: algunos navegadores leen el title de la ventana padre
+  try { w.document.title = fileName; } catch(_){}
+  toast('📄 PDF: ' + fileName + ' · cód. ' + codigo,'ok',5500);
+}
+
+/* ══════════════════════════════════════════
+   LAB. ALGAS — PAYLOAD BUILDER
+   Sheet: Lab_Algas
+   Cols: Fecha, Corrida_Larv, Modulo_Larv, Area_Algas, Sistema,
+         Lote, Dia_Proceso, Cel_ml, Protozoarios, Especie,
+         Salinidad_ppt, pH, Temperatura_C, Intensidad_Luz_%
+══════════════════════════════════════════ */
+function buildAlgasPayload(m){
+  const alg = (loadE(m,"algas") || {data:{}}).data;
+  const headers = [
+    "Fecha","Corrida_Larv","Modulo_Larv","Area_Algas","Sistema",
+    "Lote","Dia_Proceso","Cel_ml","Protozoarios","Especie",
+    "Salinidad_ppt","pH","Temperatura_C","Intensidad_Luz_%"
+  ];
+  // safeNum: returns the parsed number (including 0) or "" for blank/invalid
+  const safeNum = (v) => { if(v===""||v===null||v===undefined) return ""; const n=parseFloat(v); return isFinite(n)?n:""; };
+  // Convierte un objeto data → row (ordenado según headers)
+  const dataToRow = (a) => [
+    isValidDate(a.fecha||"") ? a.fecha : "",
+    sanitizeStr(a.corrida_larv || ""),
+    sanitizeStr(a.modulo_larv  || ""),
+    sanitizeStr(a.area         || ""),
+    sanitizeStr(a.sistema      || ""),
+    (() => { const n = safeNum(a.lote); return (n !== "" && n >= 1 && n <= 30) ? n : ""; })(),
+    safeNum(a.dia_proceso),
+    safeNum(a.cel_ml),
+    safeNum(a.protozoarios),
+    sanitizeStr(a.especie || ""),
+    safeNum(a.salinidad),
+    safeNum(a.ph),
+    safeNum(a.temperatura),
+    safeNum(a.intensidad)
+  ];
+  const rows = [];
+  // 1) Historial pendiente (cola FIFO, máx 10)
+  loadAlgHist().forEach(h => { if(h && h.data) rows.push(dataToRow(h.data)); });
+  // 2) Registro actual de la ficha (si tiene fecha o cel_ml)
+  const hasCurrent = ["fecha","cel_ml"].some(k => alg[k] !== undefined && alg[k] !== "");
+  if(hasCurrent) rows.push(dataToRow(alg));
+  return { sheetName:"Lab_Algas", headers, rows };
+}
+
+/* ══════════════════════════════════════════
+   FICHA LAB. ALGAS — RENDER
+   Dynamic selects: Sistema depends on Area_Algas.
+   Lote shows only for FM/FP.
+   Dia_Proceso shows for M…, PM…, PBR….
+══════════════════════════════════════════ */
+
+// Sistema options per area type
+const ALG_SISTEMAS = {
+  sala:   ["FM","FP"],
+  mod:    [...Array.from({length:15},(_,i)=>"M"+(i+1)),
+           ...Array.from({length:15},(_,i)=>"PM"+(i+1))],
+  cepario:["C1","C2","C3","C4"],
+  none:   ["PBR1","PBR2","PBR3","PBR4"]
+};
+
+function algAreaType(area){
+  if(!area) return "none";
+  if(area.startsWith("Sala"))    return "sala";
+  if(area.startsWith("MOD"))     return "mod";
+  if(area.startsWith("Cepario")) return "cepario";
+  return "none";
+}
+
+function buildSistemaOpts(area, cur){
+  const type = algAreaType(area);
+  return ALG_SISTEMAS[type].map(s =>
+    `<option value="${s}"${s===cur?" selected":""}>${s}</option>`
+  ).join("");
+}
+
+function algSistemaType(sistema){
+  if(!sistema) return "none";
+  if(sistema==="FM"||sistema==="FP") return "fmfp";
+  // M1-M15, PM1-PM15, PBR1-PBR4 → show Día Proceso
+  if(/^P?M\d/.test(sistema)||sistema.startsWith("PBR")) return "masivo";
+  return "none";
+}
+
+// Scope to fp-algas to avoid stale matches on hidden panels
+function _algFp(){ return document.getElementById("fp-algas"); }
+
+function algAreaChange(){
+  const fp   = _algFp(); if(!fp) return;
+  const area = fp.querySelector('[name="area"]')?.value || "";
+  const sisEl = fp.querySelector('[name="sistema"]');
+  if(!sisEl) return;
+  sisEl.innerHTML = `<option value="">— Selecciona —</option>` + buildSistemaOpts(area, "");
+  algSistemaChange();
+}
+
+function algSistemaChange(){
+  const fp  = _algFp(); if(!fp) return;
+  const sis   = fp.querySelector('[name="sistema"]')?.value || "";
+  const stype = algSistemaType(sis);
+  const loteRow = document.getElementById("alg-lote-row");
+  const diaRow  = document.getElementById("alg-dia-row");
+  if(loteRow) loteRow.style.display = (stype==="fmfp")   ? "flex" : "none";
+  if(diaRow)  diaRow.style.display  = (stype==="masivo") ? "flex" : "none";
+}
+
+function renderAlgas(){
+  const fp  = document.getElementById("fp-algas");
+  if(!fp) return;
+  const e   = loadE(curMod,"algas"); const d = e?e.data:{};
+  const tec = escapeHtml(d.tec || gcfg("tec",""));
+  const area    = d.area    || "";
+  const sistema = d.sistema || "";
+  const stype   = algSistemaType(sistema);
+
+  const areaOpts = [
+    ...Array.from({length:10}, (_,i)=>`<option value="MOD${i+1}"${area==="MOD"+(i+1)?" selected":""}>MOD${i+1}</option>`),
+    `<option disabled>──────</option>`,
+    `<option value="Cepario 1"${area==="Cepario 1"?" selected":""}>Cepario 1</option>`,
+    `<option value="Cepario 2"${area==="Cepario 2"?" selected":""}>Cepario 2</option>`,
+    `<option disabled>──────</option>`,
+    ...Array.from({length:4}, (_,i)=>`<option value="Sala ${i+1}"${area==="Sala "+(i+1)?" selected":""}>Sala ${i+1}</option>`)
+  ].join("");
+
+  const sistemaOpts = `<option value="">— Selecciona —</option>` + buildSistemaOpts(area, sistema);
+
+  fp.innerHTML = `<div class="fc">
+  <div class="fc-h">
+    <div class="fc-t">🌿 Lab. Algas — Registro Diario</div>
+    ${sspill(getStatus(curMod,"algas"))}
+  </div>
+  <div class="fc-b">
+    <div class="meta">
+      <div class="mf"><label>Módulo</label><input value="${mLabel(curMod)}" readonly></div>
+      <div class="mf"><label>Fecha</label>
+        <input type="date" name="fecha" value="${d.fecha||today()}"></div>
+      <div class="mf"><label>Corrida Larv.</label>
+        <input name="corrida_larv" value="${ev(d,'corrida_larv')}" placeholder="Ej. 332 ó 333-334">
+        <span class="alg-hint">Único: 332 · Rango: 333-334</span></div>
+      <div class="mf"><label>Módulo Larv.</label>
+        <input name="modulo_larv" value="${ev(d,'modulo_larv')}" placeholder="Ej. 1 ó 5-6">
+        <span class="alg-hint">Único: 1 · Rango: 5-6</span></div>
+    </div>
+    <div class="meta">
+      <div class="mf"><label>Área Algas</label>
+        <select name="area" onchange="algAreaChange()">
+          <option value="">— Selecciona —</option>
+          ${areaOpts}
+        </select></div>
+      <div class="mf"><label>Sistema</label>
+        <select name="sistema" onchange="algSistemaChange()">
+          ${sistemaOpts}
+        </select></div>
+      <div class="mf alg-row" id="alg-lote-row" style="display:${stype==="fmfp"?"flex":"none"}">
+        <label>Lote (solo FM/FP, 1-30)</label>
+        <input type="number" name="lote" value="${vl(d,'lote')}" placeholder="1 – 30" min="1" max="30" step="1"></div>
+      <div class="mf alg-row" id="alg-dia-row" style="display:${stype==="masivo"?"flex":"none"}">
+        <label>Día Proceso (0-5)</label>
+        <input type="number" name="dia_proceso" value="${vl(d,'dia_proceso')}" min="0" max="5" step="1"></div>
+    </div>
+    <div class="meta">
+      <div class="mf"><label>Cel/mL</label>
+        <input type="number" name="cel_ml" value="${vl(d,'cel_ml')}" placeholder="Ej. 280000" step="1000" min="0"></div>
+      <div class="mf"><label>Protozoarios</label>
+        <input type="number" name="protozoarios" value="${vl(d,'protozoarios')}" placeholder="Conteo" step="1" min="0"></div>
+      <div class="mf"><label>Especie</label>
+        <select name="especie">
+          ${["","Tw","Tt","Iso","Ch"].map(s=>
+            `<option value="${s}"${(d.especie||"")===s?" selected":""}>${s||"— Selecciona —"}</option>`
+          ).join("")}
+        </select></div>
+    </div>
+    <div class="meta">
+      <div class="mf"><label>Salinidad (ppt)</label>
+        <input type="number" name="salinidad" value="${vl(d,'salinidad')}" placeholder="32.22" step="0.01" min="0"></div>
+      <div class="mf"><label>pH</label>
+        <input type="number" name="ph" value="${vl(d,'ph')}" placeholder="7.33" step="0.01" min="0" max="14"></div>
+      <div class="mf"><label>Temperatura (°C)</label>
+        <input type="number" name="temperatura" value="${vl(d,'temperatura')}" placeholder="8.67" step="0.01"></div>
+      <div class="mf"><label>Intensidad Luz (%)</label>
+        <input type="number" name="intensidad" value="${vl(d,'intensidad')}" placeholder="40.5" step="0.1" min="0" max="100"></div>
+    </div>
+    <div class="ffoot">
+      <div class="ff" style="min-width:260px"><label>Observaciones</label>
+        <textarea name="obs" placeholder="Notas del cultivo…">${escapeHtml(d.obs||"")}</textarea></div>
+      <div class="ff"><label>Técnico Responsable</label>
+        <input name="tec" value="${tec}" placeholder="Nombre del técnico"></div>
+    </div>
+    ${algHistBlock()}
+    ${saveArea("algas")}
+  </div>
+</div>`;
+}
+
+/* ── Bloque visual del historial Lab. Algas (lista de pendientes) ── */
+function algHistBlock(){
+  const list = loadAlgHist();
+  const head = `<div class="alg-hist-h">
+      <div class="alg-hist-h-l">
+        📋 Historial pendiente de sincronizar
+        <span class="alg-hist-cnt">${list.length}/${ALGHIST_MAX}</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${list.length ? `<button class="btn bd" onclick="clearAlgHistConfirm()" style="font-size:10.5px;padding:5px 10px">🗑 Vaciar todo</button>` : ""}
+      </div>
+    </div>`;
+  if(!list.length){
+    return `<div class="alg-hist">
+      ${head}
+      <div class="alg-hist-empty">
+        Aún no hay registros en el historial.<br>
+        Llena el formulario y pulsa <b>📋 Agregar al historial</b> para encolarlo.<br>
+        Al pulsar <b>☁️ Guardar y sincronizar</b> se enviarán todos a la hoja <code>Lab_Algas</code>.
+      </div>
+    </div>`;
+  }
+  const items = list.map((h,i)=>{
+    const ts = new Date(h.ts).toLocaleString("es-EC",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+    const a  = h.data || {};
+    const fld = (lbl, val) => `<span><b>${lbl}:</b> ${escapeHtml(String(val===0?0:(val||'—')))}</span>`;
+    return `<div class="alg-hist-item">
+      <span class="alg-hist-num">#${i+1}</span>
+      <div class="alg-hist-body">
+        <div class="alg-hist-ts">📅 ${escapeHtml(ts)} · Fecha: ${escapeHtml(a.fecha||today())}</div>
+        <div class="alg-hist-fields">
+          ${fld("Área",       a.area)}
+          ${fld("Sistema",    a.sistema)}
+          ${fld("Especie",    a.especie)}
+          ${fld("Cel/mL",     a.cel_ml)}
+          ${fld("Día Proc.",  a.dia_proceso)}
+          ${fld("Lote",       a.lote)}
+          ${fld("Sal (ppt)",  a.salinidad)}
+          ${fld("pH",         a.ph)}
+          ${fld("T (°C)",     a.temperatura)}
+          ${fld("Luz (%)",    a.intensidad)}
+          ${fld("Proto.",     a.protozoarios)}
+          ${fld("Corrida L.", a.corrida_larv)}
+          ${fld("Mód. L.",    a.modulo_larv)}
+        </div>
+      </div>
+      <button class="alg-hist-del" onclick="removeAlgHistConfirm('${escapeHtml(h.id)}')" title="Eliminar este registro del historial">🗑</button>
+    </div>`;
+  }).join("");
+  return `<div class="alg-hist">
+    ${head}
+    <div class="alg-hist-list">${items}</div>
+    <div style="margin-top:8px;font-size:10.5px;color:#0f766e;line-height:1.6">
+      ℹ️ Estos registros se enviarán <b>en orden</b> al sincronizar (junto con el formulario actual si está lleno). Tras una sincronización exitosa, el historial se vacía automáticamente.
+    </div>
+  </div>`;
+}
+const GAS = `// ════════════════════════════════════════════════════════
+// Google Apps Script — Fichas Larvicultura
+// script.google.com → Nuevo proyecto → pega este código completo
+// Desplegar → Web App | Ejecutar como: Yo | Acceso: Cualquiera
+// ════════════════════════════════════════════════════════
+//
+// SEGURIDAD:
+//  • Allowlist estricta de hojas (M01-M10 + CIO)
+//  • Sanitización de celdas (previene formula injection)
+//  • Validación de schema (límites de filas/columnas)
+//  • Rate limiting en memoria (30 req/min)
+//  • Errores seguros (sin stack traces al cliente)
+//  • Upsert con merge inteligente (sin duplicados)
+//  • Normalización de Date objects para coincidencia exacta de clave
+// ════════════════════════════════════════════════════════
+
+const SS_ID = "1Rrpff6bD1pOQFsi2Lsagan3ttjncxJzXoXLPgtHM0Gs";
+
+// Hojas permitidas — lista blanca estricta
+var ALLOWED = [
+  "Datos Larvicultura - M01","Datos Larvicultura - M02",
+  "Datos Larvicultura - M03","Datos Larvicultura - M04",
+  "Datos Larvicultura - M05","Datos Larvicultura - M06",
+  "Datos Larvicultura - M07","Datos Larvicultura - M08",
+  "Datos Larvicultura - M09","Datos Larvicultura - M10",
+  "Datos Larvicultura - CIO",
+  "Control_Tanque M01","Control_Tanque M02",
+  "Control_Tanque M03","Control_Tanque M04",
+  "Control_Tanque M05","Control_Tanque M06",
+  "Control_Tanque M07","Control_Tanque M08",
+  "Control_Tanque M09","Control_Tanque M10",
+  "Control_Tanque CIO",
+  "Lab_Algas"
+];
+
+var LIMITS = {
+  datos:   { maxRows: 20,  maxCols: 29 },
+  control: { maxRows: 240, maxCols: 8  },
+  algas:   { maxRows: 500, maxCols: 14 }
+};
+
+var _rl = {};
+var RATE_MAX = 30, RATE_MS = 60000;
+
+// ── Punto de entrada POST ──────────────────────────────────
+function doPost(e) {
+  try {
+    var payload;
+    try {
+      payload = JSON.parse(e.postData.contents);
+    } catch(err) {
+      return respond({ status: "error", message: "Solicitud inválida" });
+    }
+
+    // Rate limiting por session key
+    var rKey = "k_" + String(e.parameter.z || "x").slice(0,8);
+    if (!rateOk(rKey)) {
+      Utilities.sleep(600);
+      return respond({ status: "error", message: "Demasiadas solicitudes" });
+    }
+
+    // Validar sheetName contra allowlist
+    if (!payload.sheetName || typeof payload.sheetName !== "string") {
+      return respond({ status: "error", message: "Parámetro inválido" });
+    }
+    if (ALLOWED.indexOf(payload.sheetName) === -1) {
+      return respond({ status: "error", message: "Hoja no permitida" });
+    }
+
+    // Validar rows
+    if (!Array.isArray(payload.rows)) {
+      return respond({ status: "error", message: "Formato inválido" });
+    }
+
+    var isCtrl  = payload.sheetName.indexOf("Control") !== -1;
+    var isAlgas = payload.sheetName === "Lab_Algas";
+    var limits  = isAlgas ? LIMITS.algas : (isCtrl ? LIMITS.control : LIMITS.datos);
+
+    if (payload.rows.length > limits.maxRows) {
+      return respond({ status: "error", message: "Límite de filas excedido" });
+    }
+
+    // Sanitizar cada celda
+    var rows;
+    try {
+      rows = payload.rows.map(function(row, ri) {
+        if (!Array.isArray(row)) throw new Error("row_" + ri);
+        return row.slice(0, limits.maxCols).map(function(cell) {
+          return cleanCell(cell);
+        });
+      });
+    } catch(sanErr) {
+      return respond({ status: "error", message: "Error en datos" });
+    }
+
+    // Abrir o crear hoja
+    var ss = SpreadsheetApp.openById(SS_ID);
+    var ws = ss.getSheetByName(payload.sheetName);
+    if (!ws) {
+      ws = ss.insertSheet(payload.sheetName);
+      fmtHeader(ws, (payload.headers || []).map(function(h){ return cleanCell(h); }), isCtrl);
+    } else if (ws.getLastRow() === 0) {
+      fmtHeader(ws, (payload.headers || []).map(function(h){ return cleanCell(h); }), isCtrl);
+    }
+
+    if (rows.length === 0) {
+      return respond({ status: "ok", sheet: payload.sheetName, rows: 0, upserted: 0, appended: 0 });
+    }
+
+    // For Lab_Algas: always append (no upsert key needed — each daily record is unique)
+    var result = isAlgas
+      ? appendRows(ws, rows)
+      : upsertRows(ws, rows, isCtrl);
+    return respond({
+      status: "ok",
+      sheet:    payload.sheetName,
+      rows:     rows.length,
+      upserted: result.upserted,
+      appended: result.appended
+    });
+
+  } catch(err) {
+    console.error("[LARV]", err.toString());
+    return respond({ status: "error", message: "Error interno. Intenta de nuevo." });
+  }
+}
+
+// ── Sanitizar celda ──────────────────────────────────────
+function cleanCell(val) {
+  if (val === null || val === undefined || val === "") return "";
+  if (typeof val === "number") {
+    return isFinite(val) ? Math.min(99999999, Math.max(-99999999, val)) : "";
+  }
+  if (typeof val === "boolean") return String(val);
+  var s = String(val).trim().slice(0, 500);
+  // Eliminar chars que activan fórmulas en Sheets (=, +, -, @, y control chars)
+  while (s.length > 0 && ("=+-@".indexOf(s.charAt(0)) !== -1 || s.charCodeAt(0) < 32)) {
+    s = s.slice(1);
+  }
+  if (s.charAt(0) === "=") return "";
+  return s;
+}
+
+// ── Rate limiting ────────────────────────────────────────
+function rateOk(key) {
+  var now = Date.now();
+  if (!_rl[key] || now > _rl[key].r) _rl[key] = { n: 0, r: now + RATE_MS };
+  if (_rl[key].n >= RATE_MAX) return false;
+  _rl[key].n++;
+  return true;
+}
+
+// ── Upsert rows ──────────────────────────────────────────
+// DISEÑO CLAVE — sin duplicados:
+//
+// Clave de fila isCtrl: Fecha|Módulo|Tanque|Hora (SIN Corrida)
+//   → una fila por combinación TQ+hora; cada sync posterior actualiza
+//     los campos vacíos con los nuevos valores (guardado progresivo).
+//   → Corrida es columna de datos, NO de identidad. Si cambia entre
+//     syncs, se actualiza in-place sin crear duplicados.
+//
+// Clave de fila !isCtrl: Fecha|Módulo|Tanque (SIN Corrida)
+//   → misma lógica: Corrida se merges como dato.
+//
+// LECTURA de Hora: getDisplayValues() en vez de getValues()
+//   getValues() devuelve objetos Date para celdas con formato hh:mm,
+//   cuyo getHours() en el servidor GAS (UTC) difiere de la hora local.
+//   getDisplayValues() devuelve el string visible "02:00".."00:00"
+//   independientemente del timezone y del formato de celda.
+//
+// ESCRITURA de Hora: setNumberFormat("@") antes de setValues()
+//   → Sheets almacena el string "02:00" como texto, nunca lo convierte a Date.
+function upsertRows(ws, newRows, isCtrl) {
+  var lastR   = ws.getLastRow();
+  // Para isCtrl: leer valores de toda la hoja + display de la col Hora en una sola pasada.
+  // getDisplayValues() en col Hora devuelve el string visible ("02:00"…"00:00")
+  // sin depender del timezone ni del formato interno (Date vs string).
+  var dataRange = ws.getDataRange();
+  var data      = dataRange.getValues();
+  var horaDisp  = null;
+  if (isCtrl && lastR > 1) {
+    horaDisp = ws.getRange(2, 2, lastR - 1, 1).getDisplayValues();
+  }
+
+  // Construir mapa de claves → posición de fila en sheet
+  var map = {};
+  for (var i = 1; i < data.length; i++) {
+    var hora = (horaDisp && horaDisp[i - 1])
+      ? String(horaDisp[i - 1][0]).slice(0, 5)
+      : timeStr(data[i][1]);
+    var k = rowKey(data[i], isCtrl, hora);
+    if (k) map[k] = { row: i + 1, idx: i };
+  }
+
+  var toAdd      = [];
+  var updated    = 0;
+  // Key columns by position — Corrida is NOT a key col (gets updated on re-sync)
+  // Datos:   [0]Fecha [1]Corrida [2]Módulo [3]Tanque → keys: 0,2,3
+  // Control: [0]Fecha [1]Hora [2]Corrida [3]Módulo [4]Tanque → keys: 0,1,3,4
+  var keySet     = isCtrl ? {0:1,1:1,3:1,4:1} : {0:1,2:1,3:1};
+  var pendingMap = {};               // deduplicación dentro del mismo batch
+
+  for (var r = 0; r < newRows.length; r++) {
+    var nr    = newRows[r];
+    var k2    = inKey(nr, isCtrl);
+    var entry = map[k2];
+
+    if (entry && entry.row > 0) {
+      // ── Fila existente: merge ────────────────────────────
+      var ex     = data[entry.idx];
+      var nc     = Math.max(ex.length, nr.length);
+      var merged = [];
+      for (var c = 0; c < nc; c++) {
+        var e      = c < ex.length ? ex[c] : "";
+        var n      = c < nr.length ? nr[c] : "";
+        var nEmpty = (n === "" || n === null || n === undefined);
+        if (keySet[c]) {
+          // Key columns: preserve existing, fallback to new
+          merged.push((e === "" || e === null || e === undefined) ? n : e);
+        } else {
+          // Data columns (incl. Corrida): use new value, fallback to existing
+          merged.push(nEmpty ? e : n);
+        }
+      }
+      if (isCtrl) ws.getRange(entry.row, 2, 1, 1).setNumberFormat("@");
+      ws.getRange(entry.row, 1, 1, merged.length).setValues([merged]);
+      fmtData(ws, entry.row, 1, merged.length, isCtrl);
+      updated++;
+
+    } else if (pendingMap[k2] !== undefined) {
+      // ── Clave duplicada en el batch: fusionar ────────────
+      var pi = pendingMap[k2];
+      for (var pc = 0; pc < nr.length; pc++) {
+        if (!keySet[pc] && nr[pc] !== "" && nr[pc] !== null && nr[pc] !== undefined) {
+          toAdd[pi][pc] = nr[pc];
+        }
+      }
+
+    } else {
+      // ── Fila nueva ────────────────────────────────────────
+      pendingMap[k2] = toAdd.length;
+      toAdd.push(nr.slice());
+      map[k2] = { row: -1, idx: -1 };
+    }
+  }
+
+  var added = 0;
+  if (toAdd.length > 0) {
+    var startRow = lastRow(ws) + 1;
+    var nc2      = toAdd[0].length;
+    if (isCtrl) ws.getRange(startRow, 2, toAdd.length, 1).setNumberFormat("@");
+    ws.getRange(startRow, 1, toAdd.length, nc2).setValues(toAdd);
+    fmtData(ws, startRow, toAdd.length, nc2, isCtrl);
+    added = toAdd.length;
+  }
+  return { upserted: updated, appended: added };
+}
+
+
+// ── Funciones de clave ────────────────────────────────────
+// CLAVE SIN CORRIDA: Fecha+Módulo+Tanque (Datos) o +Hora (Control)
+// Esto evita duplicados cuando el usuario cambia la corrida entre syncs.
+// La corrida se actualiza via merge, no es parte de la identidad de la fila.
+
+// rowKey: para filas leídas de Sheets. Recibe horaStr pre-calculado
+//         desde getDisplayValues() para evitar problemas de timezone.
+function rowKey(row, isCtrl, horaStr) {
+  if (isCtrl) {
+    // Clave: Fecha|Módulo|Tanque|Hora (sin Corrida)
+    return [dStr(row[0]), String(row[3]), String(row[4]),
+            (horaStr !== undefined && horaStr !== "") ? horaStr : timeStr(row[1])].join("|");
+  }
+  // Clave: Fecha|Módulo|Tanque (sin Corrida)
+  return [dStr(row[0]), String(row[2]), String(row[3])].join("|");
+}
+// inKey: para filas entrantes del cliente (siempre strings)
+function inKey(row, isCtrl) {
+  return isCtrl
+    // Fecha|Módulo|Tanque|Hora
+    ? [String(row[0]).slice(0,10), String(row[3]), String(row[4]),
+       String(row[1]).slice(0,5)].join("|")
+    // Fecha|Módulo|Tanque
+    : [String(row[0]).slice(0,10), String(row[2]),
+       String(row[3])].join("|");
+}
+
+// dStr: normaliza fecha (Date o string) a "YYYY-MM-DD"
+function dStr(val) {
+  if (!val && val !== 0) return "";
+  if (val instanceof Date) {
+    return Utilities.formatDate(val, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  }
+  return String(val).slice(0, 10);
+}
+// timeStr: respaldo si getDisplayValues() no está disponible.
+// Usa Utilities.formatDate para respetar timezone del script (más seguro que getHours()).
+function timeStr(val) {
+  if (!val && val !== 0) return "";
+  if (val instanceof Date) {
+    return Utilities.formatDate(val, Session.getScriptTimeZone(), "HH:mm");
+  }
+  return String(val).slice(0, 5);
+}
+
+
+// ── Formato ──────────────────────────────────────────────
+function fmtData(ws, startRow, numRows, numCols, isCtrl) {
+  ws.getRange(startRow, 1, numRows, numCols)
+    .setFontSize(10).setFontFamily("Arial")
+    .setHorizontalAlignment("center").setVerticalAlignment("middle");
+  ws.getRange(startRow, 1, numRows, 1).setNumberFormat("dd/mm/yyyy");
+  if (isCtrl) {
+    // CRÍTICO: formato "@" (texto plano) en columna Hora.
+    // Evita que Sheets convierta "14:00" a objeto Date,
+    // lo que causaba que rowKey() nunca coincidiera y duplicara filas.
+    ws.getRange(startRow, 2, numRows, 1).setNumberFormat("@");
+  }
+}
+function fmtHeader(ws, headers, isCtrl) {
+  ws.appendRow(headers);
+  ws.getRange(1, 1, 1, headers.length)
+    .setBackground("#09192e").setFontColor("#ffffff")
+    .setFontWeight("bold").setFontSize(10).setFontFamily("Arial")
+    .setHorizontalAlignment("center").setVerticalAlignment("middle");
+  ws.setFrozenRows(1);
+  // Para Control_Tanque: forzar col Hora a texto desde el inicio
+  if (isCtrl && headers.length >= 2) {
+    ws.getRange(1, 2, ws.getMaxRows(), 1).setNumberFormat("@");
+  }
+}
+
+// ── Última fila con datos ────────────────────────────────
+function lastRow(ws) {
+  var lr = ws.getLastRow();
+  return lr > 0 ? lr : 0;
+}
+
+// ── Simple append (Lab_Algas — cada registro es único por fecha+hora) ──
+function appendRows(ws, newRows) {
+  var startRow = lastRow(ws) + 1;
+  var nc       = newRows[0].length;
+  ws.getRange(startRow, 1, newRows.length, nc).setValues(newRows);
+  fmtData(ws, startRow, newRows.length, nc, false);
+  return { upserted: 0, appended: newRows.length };
+}
+
+// ── Health check ─────────────────────────────────────────
+function doGet() {
+  return ContentService.createTextOutput("FichasLarv-OK");
+}
+
+// ── Respuesta JSON ────────────────────────────────────────
+function respond(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}`
+;
+
+function openCfg(){
+  document.getElementById("cfg-url").value     = gcfg("gas-url","");
+  document.getElementById("cfg-tec").value     = gcfg("tec","");
+  document.getElementById("gas-code").value    = GAS;
+  document.getElementById("cfg-ov").classList.add("open");
+}
+function closeCfg(){ document.getElementById("cfg-ov").classList.remove("open"); }
+function closeCfgOut(ev){ if(ev.target===document.getElementById("cfg-ov")) closeCfg(); }
+function saveCfg(){
+  const url    = document.getElementById("cfg-url").value.trim();
+  if(url    && !isValidGasUrl(url))   { toast("URL inválida","warn"); return; }
+  scfg("gas-url",     url);
+  scfg("tec", sanitizeStr(document.getElementById("cfg-tec").value));
+  closeCfg(); toast("Configuración guardada","ok");
+}
+
+// Returns the GAS URL — single URL for all modules
+function gasUrl(){
+  return gcfg("gas-url","");
+}
+
+async function testConn(){
+  const url = document.getElementById("cfg-url").value.trim();
+  if(!url){ toast("Ingresa la URL primero","warn"); return; }
+  if(!isValidGasUrl(url)){ toast("URL inválida","warn"); return; }
+  toast("Probando conexión…","info",2000);
+  try{
+    const ctrl = new AbortController();
+    const timer = setTimeout(()=>ctrl.abort(), 8000);
+    const r = await fetch(url, {signal: ctrl.signal});
+    clearTimeout(timer);
+    const t = await r.text();
+    t.includes("OK")
+      ? toast("✅ Conexión exitosa","ok")
+      : toast("Respuesta: " + t.slice(0,80),"warn");
+  }catch(x){
+    toast(x.name==="AbortError" ? "Tiempo de espera agotado" : "Error de conexión","err");
+  }
+}
+
+
+/* ══════════════════════════════════════════
+   FOTOS + VIDEOS — por módulo (24h TTL)
+   Storage: FPRE + mLabel(m) + "_" + id
+   Max FMAX medios por módulo, auto-borrar a 24h
+   Fotos: canvas 900px JPEG q=0.76
+   Videos: máx 30s, máx 2MB, almacenados como dataURL
+══════════════════════════════════════════ */
+const VMAX_SEC = 30;   // max video duration seconds
+const VMAX_BYTES = 2 * 1024 * 1024; // max video file size 2MB
+
+function fotoKey(m, id){ return FPRE + mLabel(m) + "_" + id; }
+
+function listFotos(m){
+  const prefix = FPRE + mLabel(m) + "_";
+  const now = Date.now();
+  const list = [];
+  const toRemove = [];
+  for(let i=0; i<localStorage.length; i++){
+    const k = localStorage.key(i);
+    if(!k || !k.startsWith(prefix)) continue;
+    try{
+      const e = JSON.parse(localStorage.getItem(k));
+      if(!e || !e.ts) { toRemove.push(k); continue; }
+      if(now - e.ts > FTTL){ toRemove.push(k); continue; }
+      list.push({key:k, ...e});
+    }catch(x){ toRemove.push(k); }
+  }
+  toRemove.forEach(k=>localStorage.removeItem(k));
+  list.sort((a,b)=>b.ts-a.ts);
+  return list;
+}
+
+function saveMedia(m, dataUrl, nota, type){
+  const fotos = listFotos(m);
+  if(fotos.length >= FMAX){
+    toast("Límite de "+FMAX+" medios alcanzado. Elimina alguno primero.","warn"); return false;
+  }
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+  const entry = { ts: Date.now(), nota: sanitizeStr(nota||""), img: dataUrl, type: type||"image" };
+  try{
+    localStorage.setItem(fotoKey(m,id), JSON.stringify(entry));
+    return true;
+  }catch(x){
+    toast("No se pudo guardar (espacio insuficiente). Intenta eliminar otros medios.","err"); return false;
+  }
+}
+// Backward compat alias
+function saveFoto(m, dataUrl, nota){ return saveMedia(m, dataUrl, nota, "image"); }
+
+function deleteFoto(key){
+  if(!key.startsWith(FPRE)) return;
+  localStorage.removeItem(key);
+  renderFotos();
+  toast("Eliminado","ok",2000);
+}
+
+function saveNota(key, val){
+  try{
+    const raw = localStorage.getItem(key);
+    if(!raw) return;
+    const e = JSON.parse(raw);
+    e.nota = sanitizeStr(val);
+    localStorage.setItem(key, JSON.stringify(e));
+  }catch(x){}
+}
+
+// ── Compresión de imagen ──────────────────
+function compressImage(file, cb){
+  const MAX  = 900;
+  const QUAL = 0.76;
+  const reader = new FileReader();
+  reader.onerror = ()=>toast("No se pudo leer la imagen","err");
+  reader.onload = ev=>{
+    const img = new Image();
+    img.onerror = ()=>toast("Imagen inválida o corrupta","err");
+    img.onload = ()=>{
+      let w = img.width, h = img.height;
+      if(w > MAX || h > MAX){
+        if(w >= h){ h = Math.round(h * MAX/w); w = MAX; }
+        else       { w = Math.round(w * MAX/h); h = MAX; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      cb(canvas.toDataURL("image/jpeg", QUAL));
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── Validación y lectura de video ─────────
+function processVideo(file, cb){
+  if(file.size > VMAX_BYTES){
+    const sizeMB = (file.size / (1024*1024)).toFixed(1);
+    toast("Video demasiado grande ("+sizeMB+" MB). Máximo 2 MB.","warn",5000);
+    return;
+  }
+  const url = URL.createObjectURL(file);
+  const vid = document.createElement("video");
+  vid.preload = "metadata";
+  vid.onloadedmetadata = ()=>{
+    URL.revokeObjectURL(url);
+    if(vid.duration > VMAX_SEC + 1){
+      toast("Video demasiado largo ("+Math.round(vid.duration)+"s). Máximo "+VMAX_SEC+" segundos.","warn",5000);
+      return;
+    }
+    // Read as dataURL
+    const reader = new FileReader();
+    reader.onerror = ()=>toast("No se pudo leer el video","err");
+    reader.onload = ev => cb(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+  vid.onerror = ()=>{
+    URL.revokeObjectURL(url);
+    toast("Video inválido o formato no soportado","err");
+  };
+  vid.src = url;
+}
+
+// ── Abrir cámara / selector (fotos) ──────
+function openCamera(){
+  const inp = document.createElement("input");
+  inp.type = "file";
+  inp.accept = "image/*";
+  inp.setAttribute("capture","environment");
+  inp.onchange = e=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    compressImage(file, dataUrl=>{
+      if(saveFoto(curMod, dataUrl, "")){
+        renderFotos();
+        toast("Foto guardada — válida por 24 h","ok",3500);
+      }
+    });
+  };
+  inp.click();
+}
+
+// ── Grabar / seleccionar video ────────────
+function openVideoCapture(){
+  const inp = document.createElement("input");
+  inp.type = "file";
+  inp.accept = "video/*";
+  inp.setAttribute("capture","environment");
+  inp.onchange = e=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    toast("Procesando video…","info",2000);
+    processVideo(file, dataUrl=>{
+      if(saveMedia(curMod, dataUrl, "", "video")){
+        renderFotos();
+        toast("Video guardado — válido por 24 h","ok",3500);
+      }
+    });
+  };
+  inp.click();
+}
+
+// ── Lightbox (imagen o video) ────────────
+function openLb(src, type){
+  const imgEl = document.getElementById("foto-lb-img");
+  const vidEl = document.getElementById("foto-lb-vid");
+  if(type === "video"){
+    imgEl.style.display = "none";
+    vidEl.style.display = "block";
+    vidEl.src = src;
+  } else {
+    vidEl.style.display = "none";
+    vidEl.src = "";
+    imgEl.style.display = "block";
+    imgEl.src = src;
+  }
+  document.getElementById("foto-lb").classList.add("on");
+  document.body.style.overflow = "hidden";
+}
+function closeLb(){
+  document.getElementById("foto-lb").classList.remove("on");
+  const imgEl = document.getElementById("foto-lb-img");
+  const vidEl = document.getElementById("foto-lb-vid");
+  imgEl.src = ""; imgEl.style.display = "none";
+  vidEl.pause(); vidEl.src = ""; vidEl.style.display = "none";
+  document.body.style.overflow = "";
+}
+function openLbKey(key){
+  try{
+    const e = JSON.parse(localStorage.getItem(key));
+    if(e && e.img) openLb(e.img, e.type||"image");
+  }catch(x){}
+}
+
+// ── Render tab Fotos + Videos ───────────
+function renderFotos(){
+  const fp = document.getElementById("fp-fotos");
+  if(!fp) return;
+  const fotos = listFotos(curMod);
+  const remaining = FMAX - fotos.length;
+  const ttlH = 24;
+  const nFotos = fotos.filter(f=>(f.type||"image")==="image").length;
+  const nVids  = fotos.filter(f=>f.type==="video").length;
+
+  const grid = fotos.length === 0
+    ? `<div class="foto-empty">
+        <span class="foto-empty-ico">📷</span>
+        No hay fotos ni videos guardados para este módulo.<br>
+        <small style="margin-top:6px;display:block;opacity:.7">Los medios se borran automáticamente a las ${ttlH} horas.</small>
+       </div>`
+    : `<div class="foto-grid">${fotos.map(f=>{
+        const ts = new Date(f.ts).toLocaleString("es-EC",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+        const exp = new Date(f.ts + FTTL);
+        const expStr = exp.toLocaleString("es-EC",{hour:"2-digit",minute:"2-digit",day:"2-digit",month:"2-digit"});
+        const isVid = f.type === "video";
+        const thumb = isVid
+          ? `<div class="foto-vid-wrap">
+              <video class="foto-vid-thumb" src="${f.img}" preload="metadata" muted playsinline
+                onclick="openLbKey('${f.key}')"></video>
+              <span class="foto-vid-badge">🎬 Video</span>
+              <div class="foto-vid-play"></div>
+            </div>`
+          : `<img class="foto-thumb" src="${f.img}" alt="Foto ${ts}"
+               onclick="openLbKey('${f.key}')">`;
+        return `<div class="foto-card">
+          ${thumb}
+          <div class="foto-info">
+            <div class="foto-ts">${isVid?'🎬':'📅'} ${ts} · ⏳ vence ${expStr}</div>
+            <div class="foto-ttl-bar">Nota</div>
+            <textarea class="foto-nota" rows="2"
+              onchange="saveNota('${f.key}',this.value)"
+              placeholder="Añade una nota…">${escapeHtml(f.nota||"")}</textarea>
+            <button class="foto-delbtn" onclick="deleteFoto('${f.key}')">🗑 Eliminar</button>
+          </div>
+        </div>`;
+      }).join("")}</div>`;
+
+  fp.innerHTML = `<div class="fc">
+    <div class="fc-h">
+      <div class="fc-t">📷 Fotos y Videos · ${mLabel(curMod)}</div>
+      <span class="ssp ssp-mt">${nFotos} foto${nFotos!==1?'s':''} · ${nVids} video${nVids!==1?'s':''} · ${ttlH}h TTL</span>
+    </div>
+    <div class="fc-b">
+      <div class="foto-toolbar">
+        <button class="foto-capbtn" onclick="openCamera()">
+          📷 Tomar foto
+        </button>
+        <button class="foto-vidbtn" onclick="openVideoCapture()">
+          🎬 Grabar video
+        </button>
+        <div class="foto-cnt">
+          ${remaining > 0
+            ? remaining + " espacio(s) disponible(s)"
+            : "⚠️ Límite alcanzado — elimina un medio para agregar más"}
+        </div>
+      </div>
+      ${grid}
+      <div style="margin-top:14px;font-size:10.5px;color:var(--tx3);line-height:1.7">
+        ℹ️ Fotos y videos se almacenan localmente y se borran automáticamente a las 24 horas.<br>
+        No se sincronizan con Google Sheets. Máximo ${FMAX} medios por módulo.<br>
+        📹 Videos: máximo ${VMAX_SEC} segundos, máximo 2 MB de tamaño.
+      </div>
+    </div>
+  </div>`;
+}
+
+
+/* ══════════════════════════════════════════
+   NOTA DEL MÓDULO
+   Persistida en localStorage con clave NPRE+mLabel(m)
+   Sin TTL — la nota se borra manualmente o al limpiar.
+   Se carga al entrar al módulo y se actualiza en tiempo real.
+══════════════════════════════════════════ */
+const NPRE = "larv4_note_";
+
+function nkey(m){ return NPRE + mLabel(m); }
+
+function loadNote(m){
+  try{ return localStorage.getItem(nkey(m)) || ""; }
+  catch(x){ return ""; }
+}
+function saveNote(m, txt){
+  try{ localStorage.setItem(nkey(m), sanitizeStr(txt)); }
+  catch(x){}
+}
+
+let _noteTm = null;
+
+function noteInput(){
+  const ta = document.getElementById("note-ta");
+  if(!ta) return;
+  ta.style.height = "auto";
+  ta.style.height = Math.min(ta.scrollHeight, 90) + "px";
+  clearTimeout(_noteTm);
+  _noteTm = setTimeout(()=>noteSave(), 800);
+}
+
+function noteSave(){
+  const ta = document.getElementById("note-ta");
+  if(!ta || curMod === null || curMod === undefined) return;
+  saveNote(curMod, ta.value);
+  const el = document.getElementById("note-saved");
+  if(el){ el.textContent = "guardado"; el.style.opacity="1"; setTimeout(()=>{el.style.opacity="0";}, 1800); }
+}
+
+function noteClear(){
+  if(curMod === null || curMod === undefined) return;
+  if(!confirm("¿Limpiar la nota del módulo " + mLabel(curMod) + "?")) return;
+  saveNote(curMod, "");
+  const ta = document.getElementById("note-ta");
+  if(ta){ ta.value = ""; ta.style.height = "auto"; }
+  const el = document.getElementById("note-saved");
+  if(el){ el.textContent = ""; }
+  toast("Nota limpiada","ok",2000);
+}
+
+function renderNote(m){
+  const ta   = document.getElementById("note-ta");
+  const lbl  = document.getElementById("note-mod-lbl");
+  if(!ta) return;
+  if(lbl) lbl.textContent = mLabel(m);
+  ta.value = loadNote(m);
+  ta.style.height = "auto";
+  if(ta.value) ta.style.height = Math.min(ta.scrollHeight, 90) + "px";
+}
+
+
+/* ══════════════════════════════════════════
+   INIT
+══════════════════════════════════════════ */
+cleanup();
+buildGrid();
+</script>
+</body>
+</html>
