@@ -3095,6 +3095,8 @@ function _colaClaveCubierta(kind, supKeys, k){
 // 🔴 2026-10-04 · DEVUELVE si el envío QUEDÓ en la cola (true también si ya estaba): false = no cupo en el almacenamiento.
 function _enqueueSync(payload, reqId, url, mark){
   if(!payload || !Array.isArray(payload.rows) || payload.rows.length === 0) return true;   // nada que proteger
+  // 2026-11-04 (pauta A4) · Con algo de esta hoja en la cola, lo último enviado deja de ser lo último: el antidoble clic ya no puede contestar «ya está».
+  _lastSyncFingerprint.delete(payload.sheetName || "_default");
   let q = _loadSyncQueue();
   // Evita acumular el mismo envío (misma huella) más de una vez.
   /* PE1.2 (2026-09-16) · pero si es de una ficha de Maduración, la entrada del registro del SEGUNDO guardado tiene
@@ -3168,19 +3170,43 @@ function _purgeQueueMark(mark){
   }catch(_){}
 }
 
-/* 2026-11-03 (pauta 1.2) · ¿Espera en la cola un envío con ALGUNA de estas llaves, y otras que éste no lleva? Entonces no puede salir
-   directo: _purgeQueueMark no retira ese lote —se perderían los demás— y al vaciarse volvería a escribir sobre lo de ahora los datos
-   viejos de las llaves compartidas, con la app diciendo «enviado». La salida es respetar el orden: ver postPayload. */
-function _colaSolapa(mark){
+/* 2026-11-03 (pauta 1.2) · ¿Espera en la cola un envío con ALGUNA de estas llaves? Entonces no puede salir directo: si lleva otras que éste
+   no lleva, _purgeQueueMark no lo retira —se perderían los demás— y al vaciarse volvería a escribir sobre lo de ahora los datos viejos de
+   las llaves compartidas, con la app diciendo «enviado». La salida es respetar el orden: ver postPayload.
+   2026-11-04 (pauta A4, usuario: «las tres piezas») · Y aunque éste lo cubra entero (_enqueueSync lo retira): un envío directo y un vaciado
+   no pueden coincidir sobre lo mismo, porque en el aire cualquiera de los dos podría escribir el último.
+   2026-11-04 (pauta A1) · Si las marcas no dicen qué registros tocan (_colaSinLlaves), basta con que sea la misma hoja. */
+function _colaSolapa(mark, hoja){
+  if(hoja && _loadSyncQueue().some(it => it && it.payload && it.payload.sheetName === hoja && _colaSinLlaves(it.mark, mark))) return true;
   if(!mark || !mark.kind || !Array.isArray(mark.keys) || !mark.keys.length) return false;
   const supKeys = new Set(mark.keys);
   const cubre = (k) => _colaClaveCubierta(mark.kind, supKeys, k);
   return _loadSyncQueue().some(it => {
     if(!it || !it.mark || it.mark.kind !== mark.kind || !Array.isArray(it.mark.keys)) return false;
-    const comunes = it.mark.keys.filter(cubre).length;   // alguna, y no todas
-    return comunes > 0 && comunes < it.mark.keys.length;
+    return it.mark.keys.filter(cubre).length > 0;
   });
 }
+/* 2026-11-04 (pauta A1) · Dos envíos de una hoja cuyas marcas no dicen si tocan los mismos registros: un formulario de Maduración marca
+   el ENVÍO, no la fila, y hay envíos sin marca. */
+function _colaSinLlaves(a, b){
+  const llaves = (m) => !!(m && m.kind && Array.isArray(m.keys) && m.keys.length);
+  if(!llaves(a) || !llaves(b)) return true;
+  return a.kind === b.kind && a.kind.indexOf("madlog:") === 0;
+}
+/* 2026-11-04 (pauta A1, usuario: «solo lo que se pisa») · ¿`it` tiene que esperar a `previo`, que no salió? Al salir después, `previo`
+   escribiría sus datos viejos encima, con la app diciendo «enviado». Lo que no se pisa sigue saliendo: un envío trabado no frena al resto. */
+function _colaSePisan(previo, it){
+  if(!previo || !it || !previo.payload || !it.payload || previo.payload.sheetName !== it.payload.sheetName) return false;
+  if(_colaSinLlaves(previo.mark, it.mark)) return true;
+  if(previo.mark.kind !== it.mark.kind) return false;
+  const supKeys = new Set(it.mark.keys);
+  return previo.mark.keys.filter(k => _colaClaveCubierta(previo.mark.kind, supKeys, k)).length > 0;
+}
+/* 2026-11-04 (pauta A15) · Vaciar para que salga lo que espera, sin quedarse colgado del vaciado entero: con la cola llena y el GAS lento dura
+   hasta ~43 min, y quien envía retenía su hoja y su ficha todo ese rato. Pasado el tope, lo suyo sigue a salvo en la cola y el vaciado sigue
+   solo. 45 s: lo que puede tardar un envío (40 s, ver _postOnce) más su consulta previa. */
+const COLA_ESPERA_ENVIO_MS = 45000;
+function _colaVaciarConTope(){ return Promise.race([flushSyncQueue(), _sleep(COLA_ESPERA_ENVIO_MS)]); }
 const _colaRechazos = new Map();   // reqId → motivo: lo que el último vaciado retiró por sus DATOS (lo lee postPayload, ver _colaSolapa)
 
 // F3: reconcilia el estado local tras una ENTREGA confirmada desde la cola.
@@ -3193,8 +3219,16 @@ const _colaRechazos = new Map();   // reqId → motivo: lo que el último vaciad
  *  marcará la que siga siendo EXACTAMENTE la que se envió. Sin ese sello, editar la ficha
  *  después de encolar y recibir luego la entrega la pintaría como sincronizada mientras
  *  la edición NO ha viajado. Devuelve null si no hay nada que sellar. */
+/* 2026-11-04 (pauta A15) · LA HUELLA de una ficha, y si sigue siendo lo que viajó. Por su CONTENIDO: pulsar 💾 sin cambiar nada sólo mueve la
+   hora, y la dejaba pendiente con un ✏️ falso. Una marca sin huella —de antes, o de días anteriores (previasEnviar)— va por la hora. */
+function _fichaHuella(e){ return _stringHash(JSON.stringify(e.data === undefined ? null : e.data)); }
+function _fichaIgual(mark, k, e){
+  const h = mark.huellas;
+  if(h && Object.prototype.hasOwnProperty.call(h, k)) return _fichaHuella(e) === h[k];
+  return e.updatedAt === (mark.stamps || {})[k];
+}
 function _marcaFichas(mod, fichas){
-  const keys = [], stamps = {};
+  const keys = [], stamps = {}, huellas = {};
   (fichas || []).forEach(f => {
     const e = loadE(mod, f);
     if(!e) return;
@@ -3202,9 +3236,9 @@ function _marcaFichas(mod, fichas){
     // se quedaría «pendiente de días anteriores» estando en la hoja. Sin fecha (marcas viejas), como antes.
     const _dia = (e.date && /^\d{4}-\d{2}-\d{2}$/.test(e.date)) ? e.date : "";
     const k = mod + "|" + f + (_dia ? "|" + _dia : "");
-    keys.push(k); stamps[k] = e.updatedAt;
+    keys.push(k); stamps[k] = e.updatedAt; huellas[k] = _fichaHuella(e);
   });
-  return keys.length ? { kind:"fichas", keys:keys, stamps:stamps } : null;
+  return keys.length ? { kind:"fichas", keys:keys, stamps:stamps, huellas:huellas } : null;
 }
 
 /* Reconciliación de las fichas saveE tras una ENTREGA confirmada desde la cola.
@@ -3212,7 +3246,6 @@ function _marcaFichas(mod, fichas){
    `pushHist` se auto-protege (sólo acepta FICHAS), así que Desinfección no entra en el
    Historial, igual que en el camino directo. */
 function _reconcileFichas(mark){
-  const sellos = (mark && mark.stamps) || {};
   let ch = false;
   mark.keys.forEach(k => {
     const p = String(k).split("|");
@@ -3226,7 +3259,7 @@ function _reconcileFichas(mark){
       if(!/^\d{4}-\d{2}-\d{2}$/.test(p[2]) || !isValidMod(mod)) return;
       const sk = PRE + mLabel(mod) + "_" + ficha + "_" + p[2];
       let ed = null; try{ ed = JSON.parse(localStorage.getItem(sk)); }catch(_){}
-      if(!ed || ed.synced || ed.mod !== mod || ed.ficha !== ficha || ed.updatedAt !== sellos[k]) return;
+      if(!ed || ed.synced || ed.mod !== mod || ed.ficha !== ficha || !_fichaIgual(mark, k, ed)) return;
       try{ pushHist(mod, ficha, ed.data); }catch(_){}
       ed.synced = true;
       if(_lsSet(sk, JSON.stringify(ed))){ _invalidateLoadE(sk); ch = true; }
@@ -3236,7 +3269,7 @@ function _reconcileFichas(mark){
     if(!e || e.synced) return;
     // El sello: si no casa, la ficha se editó después de encolarse. Sigue pendiente, y
     // eso es la VERDAD — lo que hay en pantalla no es lo que está en Sheets.
-    if(e.updatedAt !== sellos[k]) return;
+    if(!_fichaIgual(mark, k, e)) return;
     try{ pushHist(mod, ficha, e.data); }catch(_){}
     if(saveE(mod, ficha, e.data, true)) ch = true;
   });
@@ -3362,14 +3395,24 @@ function _marcaCorregida(m){
       return m.keys.some(k => {
         const p = String(k).split("|"), mod = /^\d+$/.test(p[0]) ? Number(p[0]) : p[0];
         const e = p.length === 3 ? JSON.parse(localStorage.getItem(PRE + mLabel(mod) + "_" + p[1] + "_" + p[2])) : loadE(mod, p[1]);
-        return !!e && Object.prototype.hasOwnProperty.call(st, k) && e.updatedAt !== st[k];
+        return !!e && !e.synced && Object.prototype.hasOwnProperty.call(st, k) && !_fichaIgual(m, k, e);
       });
     }
     if(!m.sellos) return false;
-    let todas = null;
+    let todas = null, pendientes = null;
     if(m.kind === "alg") todas = _algHuellas();
-    else { const F = _marcaFuente(m); if(F) todas = _marcaHuellas(F.raw(), F.keyOf); }
-    return !!todas && Object.keys(m.sellos).some(c => Object.prototype.hasOwnProperty.call(todas, c) && todas[c] !== m.sellos[c]);
+    else {
+      const F = _marcaFuente(m);
+      if(F){
+        /* 2026-11-04 (pauta A15) · Lo ya marcado no está «corregido»: una entrega por la cola lo marca antes de llegar aquí, y al marcar,
+           Traslado retoca sus datos. Por clave, no por registro: la huella de una clave lleva todos los suyos, enviados o no. */
+        const l = F.raw();
+        todas = _marcaHuellas(l, F.keyOf);
+        pendientes = {};
+        l.forEach(r => { if(r && !r.synced){ try{ pendientes[String(F.keyOf(r))] = true; }catch(_){} } });
+      }
+    }
+    return !!todas && Object.keys(m.sellos).some(c => Object.prototype.hasOwnProperty.call(todas, c) && todas[c] !== m.sellos[c] && (!pendientes || pendientes[c]));
   }catch(_){ return false; }
 }
 /* 2026-11-03 (pauta 1.3) · LA HUELLA de cada clave: el contenido de sus registros, sin la hora ni el estado. Pulsar 💾 sin cambiar
@@ -3400,14 +3443,16 @@ function _algHuellas(){
   return out;
 }
 /* Sella la marca con lo que viaja, ANTES de cualquier espera. Las fichas de saveE ya llevan el suyo, y las marcas con versión (id@ts)
-   lo llevan en la propia clave. */
-function _marcaSellar(mark){
+   lo llevan en la propia clave.
+   2026-11-04 (pauta A2) · `lista`: la foto con que se armó el envío. Quien espera entre armarlo y enviarlo (leer la hoja, el lote anterior)
+   tiene que pasarla: lo guardado de ahora puede llevar ya una corrección que no viajó, y quedaría «enviada» sin aviso. */
+function _marcaSellar(mark, lista){
   if(!mark || mark.sellos || !mark.kind || !Array.isArray(mark.keys) || !mark.keys.length) return;
   if(mark.kind === "fichas" || mark.kind.indexOf("madlog:") === 0 || _COLA_CON_VERSION.indexOf(mark.kind) !== -1) return;
   try{
     let todas = null;
     if(mark.kind === "alg") todas = _algHuellas();
-    else { const F = _marcaFuente(mark); if(F) todas = _marcaHuellas(F.raw(), F.keyOf); }
+    else { const F = _marcaFuente(mark); if(F) todas = _marcaHuellas(lista || F.raw(), F.keyOf); }
     if(!todas) return;
     const s = {};
     mark.keys.forEach(k => { const c = String(k); if(Object.prototype.hasOwnProperty.call(todas, c)) s[c] = todas[c]; });
@@ -3440,16 +3485,18 @@ async function flushSyncQueue(opts){
     // envío sigue vivo en la cola. Se guarda un motivo de cada clase para el aviso.
     let enEspera = 0, msgEntorno = "", msgDatos = "";
     const _selloPorUrl = {};   // PV3: la respuesta de ?p=ver, UNA por URL en este vaciado
+    const _noSalieron = [];    // pauta A1: lo que sigue en la cola y aún puede salir; lo que se pise con ello, espera detrás (_colaSePisan)
     for(const it of q){
       const url = it.url || gasUrl();
       if(!url || !isValidGasUrl(url)){ remaining.push(it); continue; }
+      if(_noSalieron.some(p => _colaSePisan(p, it))){ remaining.push(it); _noSalieron.push(it); continue; }
       // Las hojas selladas de Maduración (_madHojaPideGasNuevo) sólo se entregan a EL GAS DE ESTA APP (ver _madIngGasAlDia).
       // PV3 (2026-09-16) · y con el sello SIN CONFIRMAR (null) también esperan: antes sólo las frenaba un «no» explícito.
       // Se pregunta UNA vez por URL en cada vaciado: con diez envíos en cola eran diez esperas de hasta 6 s.
       if(it.payload && _madHojaPideGasNuevo(it.payload.sheetName)){
         if(!Object.prototype.hasOwnProperty.call(_selloPorUrl, url)) _selloPorUrl[url] = await _madIngGasAlDia(url);
         if(_selloPorUrl[url] !== true){
-          remaining.push(it); enEspera++;
+          remaining.push(it); _noSalieron.push(it); enEspera++;
           msgEntorno = _selloPorUrl[url] === false ? _madGasViejoMsg(it.payload.sheetName) : MAD_GAS_SIN_CONFIRMAR;
           continue;
         }
@@ -3473,6 +3520,9 @@ async function flushSyncQueue(opts){
       // El motivo se recoge también aquí: sin él, un rechazo por despliegue y uno por
       // datos son indistinguibles, y son la noche y el día para quien está en carretera.
       const _info = {};
+      /* 2026-11-04 (pauta A4) · Este bucle recorre la foto del principio y entre un envío y otro pasa tiempo: lo que algo más nuevo retiró
+         de la cola mientras tanto (_enqueueSync) no sale, o escribiría lo viejo encima, con la app diciendo «enviado». */
+      if(!_loadSyncQueue().some(x => x && _claveCola(x) === _claveCola(it))) continue;
       const res = await _postOnce(body, finalUrl, _info);
       if(res === "ok"){
         sent++;
@@ -3482,7 +3532,7 @@ async function flushSyncQueue(opts){
         // El dato está bien; lo que falta se arregla FUERA (re-desplegar el GAS, poner
         // el token). Se conserva para que el vaciado automático lo entregue solo. La
         // cola no se atasca: tiene TTL de 7 días y tope de SYNCQ_MAX (los dos, avisados).
-        remaining.push(it);
+        remaining.push(it); _noSalieron.push(it);
         enEspera++; msgEntorno = _info.message || msgEntorno;
       } else if(res === "rejected"){
         // Rechazo por los DATOS: reintentar es inútil y dejarlo bloquearía la cola.
@@ -3490,7 +3540,7 @@ async function flushSyncQueue(opts){
         rejected++; msgDatos = _info.message || msgDatos;
         if(it.reqId) _colaRechazos.set(it.reqId, _info.message || "");
       } else {
-        remaining.push(it); // sigue siendo transitorio: se conserva
+        remaining.push(it); _noSalieron.push(it); // sigue siendo transitorio: se conserva
       }
     }
     /* 🔴 A (2026-09-24) · LA COLA SE RELEE AL TERMINAR. Se escribía la foto del PRINCIPIO menos lo entregado, y con el GAS
@@ -3616,16 +3666,24 @@ async function postPayload(payload, url, opts){
     const MAX_ATTEMPTS = 2;
     let res = "retry";
     const _gasInfo = {};
-    if(_fp && opts && _colaSolapa(opts.mark)){
+    let _directo = true;
+    if(_fp && opts && _colaSolapa(opts.mark, payload.sheetName)){
       /* 2026-11-03 (pauta 1.2) · Detrás del lote viejo, y se vacía la cola: primero llega lo viejo y luego esto, así que gana lo último.
          Si no sale, sigue en la cola y lo demás es el camino de siempre: «en cola», «rechazado» o, si no cupo, el error. */
       if(_enqueueSync(payload, _fp, url, opts.mark)){
+        _directo = false;
         _colaRechazos.delete(_fp);
-        await flushSyncQueue();
+        await _colaVaciarConTope();
         if(_colaRechazos.has(_fp)){ _gasInfo.message = _colaRechazos.get(_fp); res = "rejected"; }
         else if(!_loadSyncQueue().some(it => it && it.reqId === _fp)) res = "ok";
+      } else {
+        /* 2026-11-04 (pauta A6, usuario: «vaciar primero») · No cupo en la cola, y eso no es razón para no enviar si hay señal: se vacía lo
+           que espera —que además hace sitio— y, si ya nada se pisa con esto, sale directo. Si no, no pasa delante: acaba en el «sin espacio» de abajo. */
+        await _colaVaciarConTope();
+        _directo = !_colaSolapa(opts.mark, payload.sheetName);
       }
-    } else {
+    }
+    if(_directo){
       for(let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++){
         res = await _postOnce(bodyPayload, finalUrl, _gasInfo);
         if(res === "ok" || res === "rejected") break;
@@ -3770,6 +3828,7 @@ async function syncAll(){
   setSyncUI("pend","Sincronizando...");
   let ok=0, fail=0, queued=0, total=0;
   let _tqRetenido = false;   // 2026-09-30 · Tanques no se envió porque, ante «¿ronda repetida?», se contestó que no
+  let _movRetenido = false;  // 2026-11-04 · lo guardado de Movimientos no se envió: ante «¿movimiento repetido?», se contestó que no
   let _desRetenido = false;  // H1 (2026-10-13) · lo guardado de Desoves no se envió: ante «¿desove repetido?», se contestó que no
 
   // Block sync without corrida/técnico for M01-M10 and CIO (no aplica a Lab. Algas ni Maduración).
@@ -3818,6 +3877,7 @@ async function syncAll(){
         // siempre y el usuario los reenviaba a mano. Es la única de las 16 rutas donde
         // hoy es posible: _reconcileMark tiene el kind "mad:*" y el modelo marca synced.
         const opts = { mark:{ kind:"mad:"+f, keys: pending.map(p=>p.id) } };
+        _marcaSellar(opts.mark, pending);   // pauta A2: Tanques ya esperó a leer la hoja, y Zonas y Tanques esperan al sello
         /* R2 · Tanques pasa por el portón del sello (ver _madTanquesEnviar); Salas no ha cambiado de llave. Zonas
            (2026-10-27) también: es hoja NUEVA y un GAS anterior la rechazaría (ver _madZonasEnviar). */
         if((f === "tanques" || f === "zonas") && _gasLoc === undefined) _gasLoc = await _madIngGasAlDia();
@@ -3825,7 +3885,9 @@ async function syncAll(){
           : f === "tanques" ? await _madTanquesEnviar(payload, opts, _gasLoc) : await postPayload(payload, url, opts);
         if(sent){
           _marcarEnviado(opts);
-          if(curTab === f) renderMad(f);
+          // 2026-11-04 · con algo tecleado sin guardar no se repinta: la grilla sale de lo guardado, y lo borraría sin aviso.
+          if(_madGridDirty){ /* se queda en pantalla */ }
+          else if(curTab === f) renderMad(f);
           else if(f === "zonas" && curTab === "salas") renderMad("salas");   // 2026-10-27 · las zonas se pintan en 🏠 Salas
           ok++;
         } else { const _b=_syncAllBucket(opts, MAD_SHEET[f]); if(_b==="queued") queued++; else if(_b==="fail") fail++; }
@@ -3842,6 +3904,7 @@ async function syncAll(){
        aquí se reutiliza la misma respuesta. */
     for(const f of MAD_LOC_FICHAS){
       if(!madLocLeer(f).length) continue;
+      if(f === "movimientos" && !(await _madMovConfirmarRepetidos(_madMovFilasGuardadas()))){ _movRetenido = true; _madMovNoEnviado(); continue; }
       if(f === "desoves" && !(await _madDesConfirmarRepetidos(_madDesFilasGuardadas()))){ _desRetenido = true; _madDesNoEnviado(); continue; }   // H1 · ¿desove repetido?
       total++;
       if(_gasLoc === undefined && _madLocCfg(f).sello) _gasLoc = await _madIngGasAlDia();
@@ -3953,8 +4016,8 @@ async function syncAll(){
   /* 2026-09-30 · con Tanques retenido ante «¿ronda repetida?», «Sin datos nuevos» y «Todo sincronizado» serían FALSOS:
      queda Tanques pendiente, y se dice. */
   // H1 (2026-10-13) · y lo mismo con Desoves retenido ante «¿desove repetido?»: se dice qué queda pendiente.
-  const _tqPend = [_tqRetenido ? "Tanques pendiente (¿ronda repetida?)" : "", _desRetenido ? "Desoves pendiente (¿desove repetido?)" : ""].filter(Boolean).join(" · ");
-  _tqRetenido = _tqRetenido || _desRetenido;
+  const _tqPend = [_tqRetenido ? "Tanques pendiente (¿ronda repetida?)" : "", _desRetenido ? "Desoves pendiente (¿desove repetido?)" : "", _movRetenido ? "Movimientos pendiente (¿movimiento repetido?)" : ""].filter(Boolean).join(" · ");
+  _tqRetenido = _tqRetenido || _desRetenido || _movRetenido;
   if(!total && _tqRetenido){ setSyncUI("pend", _tqPend); updateDots(); return; }
   if(!total){ setSyncUI("idle","Sin datos nuevos"); toast("No hay datos pendientes","info",2000); updateDots(); return; }
   if(!fail && !queued){
@@ -9172,6 +9235,19 @@ function madResDiaSalas(fuentes){
   });
   return out;
 }
+/* 🔀 A18 (2026-11-04, usuario: «Con su fila y en el total») · un MIX no tiene animales, así que _madResLotes no lo recorre y sus desoves no salían en ningún sitio:
+   el Saldo sumaba menos que la hoja. Va aparte, y sólo si alguno de sus lotes sigue en el Saldo. Gemelo: `resumenMix`, en mad-resumen.js. */
+function _madResMix(fuentes, lotes){
+  const desoves=_madResDesoves(fuentes.desoves), nauplios=_madResNauplios(fuentes.mortDesove), enSaldo={};
+  (lotes||[]).forEach(function(L){ enSaldo[_madResLote(L.lote)]=1; });
+  return Object.keys(desoves).filter(function(k){ return madLibroLotesDeMix(k).some(function(l){ return enSaldo[l]===1; }); }).sort().map(function(k){
+    const d=desoves[k];
+    return { lote:k, desoves:{ desoves:d.desoves, noViables:d.noViables, huevos:d.huevos, n2:d.n2, n5:d.n5,
+        naupliosPorHembra:d.desovesConN5>0 ? Math.round(d.n5/d.desovesConN5) : "",
+        fertilidad:d.huevosConN2>0 ? _madResR2((d.n2ConHuevos/d.huevosConN2)*100) : "" },
+      nauplios:_madResDe(nauplios, k) || { fecha:"", revisiones:[] } };
+  });
+}
 function madResumenMaduracion(fuentes, opts){
   const f=fuentes||{}, hoy=madLibroTxt((opts||{}).hoy);
   const libro=madConstruirLibro(f, { hoy:hoy });
@@ -9182,10 +9258,11 @@ function madResumenMaduracion(fuentes, opts){
   /* La alcalinidad de «Inf. Supervisor» es POR ÁREA, y sus áreas son el RAS y las cinco salas: la
      de cada sala va a su tarjeta y la del RAS a la suya, que es donde se mira el agua del sistema. */
   const alc={ dia:_madResUltimoPor(f.mortDesove, "Área", "Alcalinidad día"), noche:_madResUltimoPor(f.mortDesove, "Área", "Alcalinidad noche") };
+  const lotes=_madResLotes(f, libro, hoy);
   return { hoy:hoy, hasta:libro.hasta, avisos:libro.avisos.length,
     // punto 2 (2026-10-13) · cada sala, con lo de su último día (madResDiaSalas)
     salas:_madResSalas(f.sala, libro, f.tratamientos, tons, alc).map(function(s){ return Object.assign(s, { dia:madResDiaDeSalaVacio(), alimento:madResAlimentoVacio() }, _madResDe(diaSalas, s.sala) || {}); }),
-    lotes:_madResLotes(f, libro, hoy),
+    lotes:lotes, mix:_madResMix(f, lotes),
     ras:ras, rasAlcalinidad:{ dia:_madResDe(alc.dia, "RAS") || { valor:"", fecha:"" }, noche:_madResDe(alc.noche, "RAS") || { valor:"", fecha:"" } } };
 }
 
@@ -9551,9 +9628,7 @@ function _madResLoteHTML(L, sel, conPdf){
   }).join("<br>")+_madResGris(L.fechaDia) : "—");
   /* Cada valor va con su etiqueta: cinco categorías seguidas —«Alta · Media · Ausente · Alta ·
      Baja»— se leen mal y se confunden entre sí justo cuando hay que decidir algo. */
-  const naup=function(campos){ return L.nauplios.revisiones.length
-    ? L.nauplios.revisiones.map(function(x){ return "<b>"+escapeHtml(x.revision)+"</b> "+campos.map(function(c){ return c[1]+" "+_madResCel(x[c[0]], c[2]); }).join(" · "); }).join("<br>")+_madResGris(L.nauplios.fecha)
-    : "—"; };
+  const naup=function(campos){ return _madResNaupCelda(L, campos); };
   if(sel["naup-calidad"]) b+=_madResFila("Revisión de nauplios", naup([["deformidad","Def."],["actividad","Act."],["hongos","Hongos"],["fototropismo","Fototrop."],["aireacion","Aireac."]]));
   if(sel["naup-agua"]) b+=_madResFila("Agua de la revisión", naup([["salinidad","Sal."," ‰"],["temperatura","T°"," °C"]]));
   if(sel["des-totales"]) b+=_madResFila("Desoves · no viables · N5", L.desoves.desoves+" · "+L.desoves.noViables+" · "+_madResMiles(L.desoves.n5));
@@ -9564,6 +9639,21 @@ function _madResLoteHTML(L, sel, conPdf){
   if(sel["mortdes"]) b+=_madResFila("Mortalidad ♀ en desove", md(L.mortDesove))+_madResFila("Mortalidad ♀ en recuperación", md(L.mortRecuperacion));
   if(sel["lote-trat"]) b+=_madResFila("Preventivos", _madResTratLista(L.tratamientos, function(t){ return escapeHtml(t.productos)+(t.ras ? " · RAS: "+escapeHtml(t.ras) : "")+(t.sala ? " ("+escapeHtml(t.sala)+")" : ""); }));
   return _madResTarjeta("🦐 Lote "+escapeHtml(L.lote), b, "lote:"+L.lote, conPdf);
+}
+function _madResNaupCelda(L, campos){ return L.nauplios.revisiones.length
+    ? L.nauplios.revisiones.map(function(x){ return "<b>"+escapeHtml(x.revision)+"</b> "+campos.map(function(c){ return c[1]+" "+_madResCel(x[c[0]], c[2]); }).join(" · "); }).join("<br>")+_madResGris(L.nauplios.fecha)
+    : "—"; }
+/* 🔀 A18 · la tarjeta de un MIX: sólo lo que es suyo. Sin vivos, pesos ni mortalidad: no tiene animales, y sus muertas ya están en cada lote. */
+function _madResMixHTML(M, sel){
+  const D=M.desoves;
+  let b="";
+  if(sel["des-totales"]) b+=_madResFila("Desoves · no viables · N5", D.desoves+" · "+D.noViables+" · "+_madResMiles(D.n5));
+  if(sel["des-nauplios"]) b+=_madResFila("Nauplios/Hembra", _madResMiles(D.naupliosPorHembra));
+  if(sel["des-fertilidad"]) b+=_madResFila("Tasa de fertilidad", _madResCel(D.fertilidad,"%"));
+  if(sel["des-huevos"]) b+=_madResFila("Huevos · N2", _madResMiles(D.huevos)+" · "+_madResMiles(D.n2));
+  if(sel["naup-calidad"]) b+=_madResFila("Revisión de nauplios", _madResNaupCelda(M, [["deformidad","Def."],["actividad","Act."],["hongos","Hongos"],["fototropismo","Fototrop."],["aireacion","Aireación"]]));
+  if(sel["naup-agua"]) b+=_madResFila("Agua de la revisión", _madResNaupCelda(M, [["salinidad","Sal."," ‰"],["temperatura","T°"," °C"]]));
+  return b ? _madResTarjeta("🔀 "+escapeHtml(M.lote), b, "", false) : "";
 }
 // `filtro`: null = todo; { tipo:"sala"|"lote", nombre } = una tarjeta (PDF individual).
 function _madResCuerpoHTML(R, sel, conPdf, filtro){
@@ -9576,6 +9666,9 @@ function _madResCuerpoHTML(R, sel, conPdf, filtro){
   // Las variables de la tarjeta de lote son las de todas las fichas salvo Salas y el RAS: se deducen de MAD_RES_VARS, no se teclean aparte.
   const deLote=[].concat.apply([], MAD_RES_VARS.slice(1).map(function(g){ return g.vars.map(function(v){ return v[0]; }); })).filter(function(id){ return MAD_RES_VARS_RAS.indexOf(id)===-1; });
   if(lotes.length && alguna(deLote)) h+='<h3 style="margin:8px 0 6px;font-size:14px">🦐 Lotes</h3>'+rejilla(lotes.map(function(l){ return _madResLoteHTML(l, sel, conPdf); }).join(""));
+  const mixes=(filtro ? [] : (R.mix||[])).map(function(m){ return _madResMixHTML(m, sel); }).filter(Boolean);
+  if(mixes.length) h+='<h3 style="margin:8px 0 6px;font-size:14px">🔀 MIX</h3>'+rejilla(mixes.join(""))
+    + '<div style="font-size:11px;color:#64748b;margin:-4px 0 10px">Un MIX es un desove de varios lotes juntos: sus huevos, N2 y N5 no se pueden separar, así que no suman a ninguno de sus lotes. Sus hembras muertas sí: están repartidas en cada lote.</div>';
   if(!filtro && alguna(MAD_RES_VARS_RAS)) h+='<h3 style="margin:8px 0 6px;font-size:14px">💧 RAS</h3>'
     + _madResTarjeta("Sistema RAS",
         (sel["ras-alc"] ? _madResFila("Alcalinidad ☀️ día", _madResCel(R.rasAlcalinidad.dia.valor, " mg/L")+_madResGris(R.rasAlcalinidad.dia.fecha))+_madResFila("Alcalinidad 🌙 noche", _madResCel(R.rasAlcalinidad.noche.valor, " mg/L")+_madResGris(R.rasAlcalinidad.noche.fecha)) : "")
@@ -9810,8 +9903,10 @@ function _madResTabSalaHTML(s, R, sel){
   return _madResTabBlk('<h2>🏠 '+escapeHtml(s.sala)+'</h2>'+fr+tq+trat);
 }
 // Las tablas de LOTES, por tema: una fila por lote y, donde hay algo que sumar, su total.
-function _madResTabLotesHTML(lotes, sel){
-  const n=lotes.length, tot='<tr class="tot"><td>Total · '+n+' lote'+(n===1 ? "" : "s")+'</td>';
+function _madResTotalDe(n, mix){ return '<tr class="tot"><td>Total · '+n+' lote'+(n===1 ? "" : "s")+(mix.length ? " y "+mix.length+" MIX" : "")+'</td>'; }
+function _madResTabLotesHTML(lotes, sel, mix){
+  mix=mix||[];
+  const n=lotes.length, tot=_madResTotalDe(n, mix);
   const mo=function(c, t){ return c+" ("+_madResCel(t,"%")+")"; };
   let h="";
   const pob=sel["lote-poblacion"], mort=sel["lote-mortalidad"], dias=sel["lote-dias"];
@@ -9870,15 +9965,25 @@ function _madResTabLotesHTML(lotes, sel){
         + (df ? _madResTabTd(_madResCel(D.fertilidad,"%"), true) : "")
         + (md ? _madResTabTd(mh(L.mortDesove), true)+_madResTabTd(mh(L.mortRecuperacion), true) : "")+'</tr>';
     }).join("");
+    /* 🔀 A18 · la fila del MIX suma al total, y sin mortalidad: sus muertas ya están en cada lote. */
+    const filasMix=mix.map(function(M){
+      const D=M.desoves;
+      S.d+=_madResTabN(D.desoves); S.nv+=_madResTabN(D.noViables); S.n5+=_madResTabN(D.n5);
+      return '<tr>'+_madResTabTd('<b>'+escapeHtml(M.lote)+'</b>')
+        + (dt ? _madResTabTd(D.desoves, true)+_madResTabTd(D.noViables, true)+_madResTabTd(_madResMiles(D.n5), true) : "")
+        + (dn ? _madResTabTd(_madResMiles(D.naupliosPorHembra), true) : "")
+        + (df ? _madResTabTd(_madResCel(D.fertilidad,"%"), true) : "")
+        + (md ? _madResTabTd("—", true)+_madResTabTd("—", true) : "")+'</tr>';
+    }).join("");
     const t=tot+(dt ? _madResTabTd(S.d, true)+_madResTabTd(S.nv, true)+_madResTabTd(_madResMiles(S.n5), true) : "")
       + (dn ? _madResTabTd("—", true) : "")+(df ? _madResTabTd("—", true) : "")
       + (md ? _madResTabTd("— ("+S.dm+" de "+S.de+")", true)+_madResTabTd("— ("+S.rm+" de "+S.re+")", true) : "")+'</tr>';
-    h+=_madResTabBlk('<h2>🥚 Lotes · Reproducción</h2><table>'+_madResTabCab(cab)+'<tbody>'+filas+(n>1 ? t : "")+'</tbody></table>');
+    h+=_madResTabBlk('<h2>🥚 Lotes · Reproducción</h2><table>'+_madResTabCab(cab)+'<tbody>'+filas+filasMix+(n+mix.length>1 ? t : "")+'</tbody></table>');
   }
   const nc=sel["naup-calidad"], na=sel["naup-agua"];
   if(nc || na){
     const filas=[];
-    lotes.forEach(function(L){ L.nauplios.revisiones.forEach(function(x){
+    lotes.concat(mix).forEach(function(L){ L.nauplios.revisiones.forEach(function(x){
       filas.push([_madResTabTd('<b>'+escapeHtml(L.lote)+'</b>'), _madResTabTd(escapeHtml(x.revision))]
         .concat(nc ? ["deformidad","actividad","hongos","fototropismo","aireacion"].map(function(k){ return _madResTabTd(_madResCel(x[k])); }) : [])
         .concat(na ? [_madResTabTd(_madResCel(x.salinidad), true), _madResTabTd(_madResCel(x.temperatura), true)] : [])
@@ -9894,12 +9999,13 @@ function _madResTabLotesHTML(lotes, sel){
     }); });
     h+=_madResTabBlk('<h2>🧪 Lotes · Preventivos</h2>'+_madResTabLista(["Lote","Fecha","Productos","Productos RAS","Sala"], filas, "Sin preventivos registrados."));
   }
-  h+=_madResTabLotesNuevosHTML(lotes, sel);   // punto 2 (2026-10-13)
+  h+=_madResTabLotesNuevosHTML(lotes, sel, mix);   // punto 2 (2026-10-13)
   return h;
 }
 // punto 2 (2026-10-13) · las variables nuevas de los lotes, en tablas PROPIAS (las de antes no cambian); total sólo de lo que se suma.
-function _madResTabLotesNuevosHTML(lotes, sel){
-  const n=lotes.length, tot='<tr class="tot"><td>Total · '+n+' lote'+(n===1 ? "" : "s")+'</td>';
+function _madResTabLotesNuevosHTML(lotes, sel, mix){
+  mix=mix||[];
+  const n=lotes.length, tot=_madResTotalDe(n, mix);
   let h="";
   const xd=sel["lote-descartes"], bio=sel["lote-biomasa"], ali=sel["lote-alimento"];
   if(xd || bio || ali){
@@ -9940,8 +10046,14 @@ function _madResTabLotesNuevosHTML(lotes, sel){
         + (hv ? _madResTabTd(_madResMiles(L.desoves.huevos), true)+_madResTabTd(_madResMiles(L.desoves.n2), true) : "")
         + (p100 ? _madResTabTd(_madResCel(D.por100), true)+_madResTabTd(D.fecha ? D.desoves+" · "+D.hembras : "—", true)+_madResTabTd(D.fecha ? escapeHtml(_madUpDMY(D.fecha)) : "—") : "")+'</tr>';
     }).join("");
+    const filasMix=mix.map(function(M){   // 🔀 A18 · suma al total; por 100 ♀ no le aplica: no tiene hembras propias
+      S.hu+=_madResTabN(M.desoves.huevos); S.n2+=_madResTabN(M.desoves.n2);
+      return '<tr>'+_madResTabTd('<b>'+escapeHtml(M.lote)+'</b>')
+        + (hv ? _madResTabTd(_madResMiles(M.desoves.huevos), true)+_madResTabTd(_madResMiles(M.desoves.n2), true) : "")
+        + (p100 ? _madResTabTd("—", true)+_madResTabTd("—", true)+_madResTabTd("—") : "")+'</tr>';
+    }).join("");
     const t=tot+(hv ? _madResTabTd(_madResMiles(S.hu), true)+_madResTabTd(_madResMiles(S.n2), true) : "")+(p100 ? _madResTabTd("—", true)+'<td></td><td></td>' : "")+'</tr>';
-    h+=_madResTabBlk('<h2>🥚 Lotes · Huevos, N2 y desoves por 100 ♀</h2><table>'+_madResTabCab(cab)+'<tbody>'+filas+(n>1 ? t : "")+'</tbody></table>');
+    h+=_madResTabBlk('<h2>🥚 Lotes · Huevos, N2 y desoves por 100 ♀</h2><table>'+_madResTabCab(cab)+'<tbody>'+filas+filasMix+(n+mix.length>1 ? t : "")+'</tbody></table>');
   }
   return h;
 }
@@ -9962,7 +10074,7 @@ function _madResTabHTML(R, sel, filtro){
       h+=_madResTabBlk('<h2>TOTAL GRANJA</h2><table class="gr">'+_madResTabCab(cab.map(function(t){ return { t:t }; }))+'<tbody><tr class="tot">'+fila.map(function(v){ return _madResTabTd(v, true); }).join("")+'</tr></tbody></table>');
     }
   }
-  if(lotes.length) h+=_madResTabLotesHTML(lotes, sel);
+  if(lotes.length) h+=_madResTabLotesHTML(lotes, sel, filtro ? [] : (R.mix||[]));
   /* El PDF de UN lote no lleva las salas: sus tanques van aquí, con su sala. Con TODOS los lotes de cada tanque: los
      animales son los del tanque entero, y un tanque compartido que sólo dijera este lote escondería al otro. */
   if(filtro && filtro.tipo==="lote" && lotes.length){
@@ -10300,6 +10412,10 @@ function madIngRowId(fecha, lote, cg, sala, tanque){
 function madIngNum(v){ if(v===""||v==null) return ""; const n=Number(v); return isFinite(n)?n:""; }
 // Entero NO NEGATIVO: un conteo negativo restaría animales que nunca entraron.
 function madIngInt(v){ if(v===""||v==null) return ""; const n=parseInt(v,10); return (isFinite(n)&&n>=0)?n:""; }
+/* A16 (2026-11-04, usuario: «Rechazarlo y pedir miles enteros») · `madIngInt` lee «6.5» como 6 y «-3» como vacío, y el dato se perdía sin aviso.
+   Lo que se valida es lo TECLEADO: vacío sigue siendo «sin cifra». «4.0» vale (es 4); «1e3», no (parseInt daría 1). Gemelo: `cifraMala`, en el esquema de Desoves. */
+function madCifraMala(v){ const s=String(v==null?"":v).trim(); return s!=="" && !/^\d+(\.0*)?$/.test(s); }
+function madCifraMalaTexto(donde, que, v, enMiles){ return "En "+donde+", «"+String(v).trim()+"» no vale para "+que+": se escribe"+(enMiles?" en miles,":"")+" con un número entero, sin decimales ni signo."; }
 function madIngSumaReparto(rep, campo){
   return (rep||[]).reduce(function(a,r){ const n=parseInt(r&&r[campo],10); return a+((isFinite(n)&&n>0)?n:0); },0);
 }
@@ -10419,6 +10535,9 @@ function madIngValidar(model){
     if(!reparto.length) errores.push("«"+et+"» no se repartió en ningún tanque.");
     reparto.forEach(function(rep){
       const r = rep||{}, sala = sanitizeStr(r.sala,30), tanque = madIngInt(r.tanque);
+      [["machos","los machos"],["hembras","las hembras"]].forEach(function(s){
+        if(madCifraMala(r[s[0]])) errores.push(madCifraMalaTexto("«"+et+"»", s[1]+" del reparto", r[s[0]], false));
+      });
       if(sala===""||tanque==="") return;
       // ⚠⚠ ESTO EVITA UNA PÉRDIDA SILENCIOSA, no es una molestia de formulario: dos filas
       // de la MISMA composición en el MISMO tanque generan el MISMO ID y el upsert escribe
@@ -10441,6 +10560,7 @@ function madIngValidar(model){
       if(!permitidos) avisos.push("«"+sala+"» no es una sala conocida.");
     });
     ["machos","hembras"].forEach(function(sexo){
+      if(madCifraMala(c[sexo])){ errores.push(madCifraMalaTexto("«"+et+"»", sexo==="machos" ? "los machos declarados" : "las hembras declaradas", c[sexo], false)); return; }
       const dec = parseInt(c[sexo],10);
       if(!isFinite(dec)) return;
       const rep = madIngSumaReparto(reparto, sexo);
@@ -12242,8 +12362,12 @@ const MAD_MOV_COLUMNS = [
 const MAD_MOV_HEADERS = MAD_MOV_COLUMNS.map(function(c){ return c.h; });
 // Llave natural del tramo. Lleva las DOS salas además de los tanques porque la numeración
 // se repite entre salas: sin ellas, «t3 → t7» sería ambiguo.
-function madMovRowId(fecha, sO, tO, sD, tD){
-  return sanitizeStr(fecha,10)+"-"+madIngSalaTag(sO)+"t"+Number(tO)+"-"+madIngSalaTag(sD)+"t"+Number(tD);
+// 2026-11-04 (usuario, «ID propio y aviso») · `envio`: el mismo día y la misma ruta pueden moverse animales más de una vez, y con el ID
+// de la ruta sola el segundo reemplazaba al primero en la hoja y el saldo los perdía, sin error. Sin él, el ID de siempre (las filas de antes).
+function madMovRowId(fecha, sO, tO, sD, tD, envio){
+  const base = sanitizeStr(fecha,10)+"-"+madIngSalaTag(sO)+"t"+Number(tO)+"-"+madIngSalaTag(sD)+"t"+Number(tD);
+  const e = sanitizeStr(envio,20);
+  return e ? base+"-"+e : base;
 }
 function madMovBuildRows(model){
   const m = model||{};
@@ -12260,7 +12384,7 @@ function madMovBuildRows(model){
       salaOrigen: sO, tanqueOrigen: tO, salaDestino: sD, tanqueDestino: tD,
       machos: madIngInt(t.machos), hembras: madIngInt(t.hembras),
       agua: sanitizeStr(t.agua,20),
-      id: madMovRowId(fecha, sO, tO, sD, tD)
+      id: madMovRowId(fecha, sO, tO, sD, tD, m.envio)
     };
     filas.push(MAD_MOV_COLUMNS.map(function(col){ return v[col.k]; }));
   });
@@ -12292,6 +12416,9 @@ function madMovValidar(model){
     const llave = madIngSalaTag(sO)+"|"+tO+"|"+madIngSalaTag(sD)+"|"+tD;
     if(vistos[llave]) errores.push("El "+et+" repite el mismo origen y destino que otro tramo. Los dos generarían la misma fila y el segundo borraría al primero: regístralos sumados.");
     vistos[llave]=1;
+    [["machos","los machos"],["hembras","las hembras"]].forEach(function(s){
+      if(madCifraMala(t[s[0]])) errores.push(madCifraMalaTexto("el "+et, s[1], t[s[0]], false));
+    });
     const mach = madIngInt(t.machos), hemb = madIngInt(t.hembras);
     if((mach===""||mach===0) && (hemb===""||hemb===0)) errores.push("El "+et+" no mueve ningún animal.");
     [[sO,tO,"origen"],[sD,tD,"destino"]].forEach(function(par){
@@ -12418,7 +12545,7 @@ function madMovCollect(){
       machos:g(tr,".mv-machos"), hembras:g(tr,".mv-hembras"), agua:g(tr,".mv-agua")
     });
   });
-  return { fecha:v("mv-fecha"), tipo:v("mv-tipo"), motivo:v("mv-motivo"), observaciones:v("mv-obs"), tramos:tramos };
+  return { fecha:v("mv-fecha"), tipo:v("mv-tipo"), motivo:v("mv-motivo"), observaciones:v("mv-obs"), tramos:tramos, envio:v("mv-envio") };
 }
 function _madMovPinta(res, filas){
   const box=document.getElementById("mv-report"); if(!box) return;
@@ -12447,6 +12574,7 @@ function madMovAvisosOcupacion(model){
   return libro ? madAvisosTransferenciaCompartida(libro, model.tipo, model.tramos) : [];
 }
 function madMovRevisar(){
+  _madMovAsegurarEnvio();   // los avisos de ocupación miran el ID: el mismo con el que se enviará
   const model=madMovCollect();
   const res=madMovValidar(model);
   res.avisos=res.avisos.concat(madMovAvisosOcupacion(model));
@@ -12537,7 +12665,17 @@ function madMovLogHTML(){
     + '</div>';
 }
 /* PE1.4 · lo que 💾 y ☁️ comparten: recoger, revisar y construir. null si hay errores (ya los pintó y avisó). */
+/* El formulario guarda su identidad hasta que se limpia: reintentar un envío fallido escribe la misma fila, no otra. Corregir desde el
+   Historial conserva la que traiga, y un envío de antes, sin ella, conserva su ID de siempre: en los dos casos reemplaza su propia fila. */
+function _madMovAsegurarEnvio(){
+  const fp=document.getElementById("fp-movimientos");
+  if(!fp || _madHistCorrActiva("movimientos")) return;
+  let e=document.getElementById("mv-envio");
+  if(!e){ e=document.createElement("input"); e.type="hidden"; e.id="mv-envio"; fp.appendChild(e); }
+  if(!e.value){ e.value=Date.now().toString(36)+Math.random().toString(36).slice(2,5); }
+}
 function _madMovPreparar(conGuardados){
+  _madMovAsegurarEnvio();
   const model=madMovCollect();
   const res=madMovValidar(model);
   res.avisos=res.avisos.concat(madMovAvisosOcupacion(model));
@@ -12547,6 +12685,61 @@ function _madMovPreparar(conGuardados){
   _madMovPinta(res, payload.rows.length);
   if(res.errores.length){ toast("Corrige los errores antes de guardar.","err",4000); return null; }
   return { model:model, payload:payload };
+}
+/** Las filas guardadas con 💾 que se van a enviar (las de un esquema anterior no salen: ver _madLocEnviar). */
+function _madMovFilasGuardadas(){
+  const out=[], cab=JSON.stringify(MAD_MOV_HEADERS);
+  madLocLeer("movimientos").forEach(function(e){
+    const p=e && e.payload;
+    if(p && Array.isArray(p.rows) && JSON.stringify(p.headers)===cab) p.rows.forEach(function(r){ out.push(r); });
+  });
+  return out;
+}
+/** Lo que YA hay de cada ruta ese día, con otro ID: en la hoja, en lo enviado desde este equipo y en este mismo envío. La misma fila
+ *  (mismo ID) no cuenta: reenviarla la reemplaza. `hoja`: filas de la hoja, por nombre de columna; `historial`: entradas de madHistLeer. */
+function madMovRepetidos(filas, hoja, historial){
+  const col=function(h){ return MAD_MOV_HEADERS.indexOf(h); };
+  const iId=col("ID"), iF=col("Fecha"), iSO=col("Sala origen"), iTO=col("Tanque origen"), iSD=col("Sala destino"), iTD=col("Tanque destino"), iM=col("Machos"), iH=col("Hembras");
+  const cab=JSON.stringify(MAD_MOV_HEADERS);
+  const conocidas=[];
+  (hoja||[]).forEach(function(r){ if(r && r.ID) conocidas.push({ id:String(r.ID), machos:r.Machos, hembras:r.Hembras, donde:"la hoja" }); });
+  (historial||[]).forEach(function(e){
+    const p=e && e.payload;
+    if(!e || e.ficha!=="movimientos" || !p || !Array.isArray(p.rows) || JSON.stringify(p.headers)!==cab) return;
+    p.rows.forEach(function(r){ if(r[iId]) conocidas.push({ id:String(r[iId]), machos:r[iM], hembras:r[iH], donde:"este equipo" }); });
+  });
+  (filas||[]).forEach(function(r){ conocidas.push({ id:String(r[iId]), machos:r[iM], hembras:r[iH], donde:"este envío" }); });
+  const salida=[], vistos={};
+  (filas||[]).forEach(function(r){
+    const id=String(r[iId]), base=madMovRowId(r[iF], r[iSO], r[iTO], r[iSD], r[iTD]);
+    conocidas.forEach(function(k){
+      // Con el guion: la ruta al tanque 7 no es la del tanque 71.
+      if(k.id===id || (k.id!==base && k.id.indexOf(base+"-")!==0)) return;
+      const clave=[id,k.id].sort().join("|");
+      if(vistos[clave]) return;
+      vistos[clave]=1;
+      salida.push({ fecha:r[iF], salaOrigen:r[iSO], tanqueOrigen:r[iTO], salaDestino:r[iSD], tanqueDestino:r[iTD], machos:k.machos, hembras:k.hembras, donde:k.donde });
+    });
+  });
+  return salida;
+}
+/** ☁️ y 🔄 · true = enviar; false = quien sincroniza dijo que no. Sin poder leer la hoja, mira lo de este equipo y sigue: un envío de más se
+ *  ve en el saldo y se corrige; uno que no sale por falta de señal no se ve. Como el aviso de ronda repetida de Tanques. */
+async function _madMovConfirmarRepetidos(filas){
+  if(!filas || !filas.length) return true;
+  toast("Comprobando la hoja de Movimientos…","info",2500);
+  const hoja=await _madHojaFresca(MAD_MOV_SHEET);
+  const rep=madMovRepetidos(filas, hoja, madHistLeer());
+  if(!rep.length) return true;
+  const lineas=rep.map(function(x){
+    return "· "+x.salaOrigen+" T"+x.tanqueOrigen+" → "+x.salaDestino+" T"+x.tanqueDestino+" el "+x.fecha+": ya hay "+(Number(x.machos)||0)+" ♂ y "+(Number(x.hembras)||0)+" ♀ en "+x.donde;
+  });
+  return confirm("⚠ ¿Movimiento REPETIDO? Esa ruta ya tiene otro movimiento ese día:\n"+lineas.join("\n")
+    +"\n\nAceptar = es OTRO movimiento: enviar. Va en su propia fila y se suma al anterior."
+    +"\nCancelar = no enviar Movimientos ahora; lo tecleado y lo guardado siguen en este dispositivo. Para corregir el anterior, usa ✏️ Editar en 📜 Historial.");
+}
+function _madMovNoEnviado(){
+  toast("Movimientos NO enviado: lo tecleado y lo guardado siguen en este dispositivo.","warn",9000);
 }
 function madMovGuardarLocal(){
   const _p=_madMovPreparar(); if(!_p) return;
@@ -12558,9 +12751,14 @@ function madMovGuardarLocal(){
 }
 async function madMovGuardar(){
   const _loc=madLocLeer("movimientos").length;
-  const _p=_madMovPreparar(_loc>0); if(!_p) return;
+  let _p=_madMovPreparar(_loc>0); if(!_p) return;
+  if(!_p.payload.rows.length && !_loc){ toast("No hay ningún tramo completo que guardar.","warn",4000); return; }
+  // Se pregunta ANTES de enviar nada: «Cancelar» tampoco envía lo guardado. Una corrección reemplaza su propia fila: de ésa no se pregunta.
+  const _aMirar=(_madHistCorrActiva("movimientos") ? [] : _p.payload.rows).concat(_loc ? _madMovFilasGuardadas() : []);
+  if(!(await _madMovConfirmarRepetidos(_aMirar))){ _madMovNoEnviado(); return; }
+  // Leer la hoja puede tardar hasta 15 s: sale lo que se ve ahora, no lo de antes de esperar.
+  _p=_madMovPreparar(_loc>0); if(!_p) return;
   const model=_p.model, payload=_p.payload;
-  if(!payload.rows.length && !_loc){ toast("No hay ningún tramo completo que guardar.","warn",4000); return; }
   // PE1.4 · primero lo guardado con 💾 (lo más viejo antes); si algo falla, lo de pantalla tampoco sale.
   if(_loc && (await _madLocEnviar("movimientos")).fallo) return;
   if(!payload.rows.length) return;
@@ -12713,9 +12911,29 @@ function madDesMiles(v){
   const n = madIngInt(v);
   return n==="" ? "" : n*MAD_DESOVE_MIL;
 }
-function madDesNormLote(s){ return sanitizeStr(s,40).toUpperCase().replace(/\s+/g,""); }
+function madDesNormLote(s){ return _madDesMixCanon(sanitizeStr(s,40).toUpperCase().replace(/\s+/g,"")); }
+/* A17 (2026-11-04, usuario: «Ordenarlo solo; si está mal, error») · un MIX escrito a mano: «mix(bo, bn)» es MIX(BN,BO), la misma llave que el de 📥 Cargar;
+   y dos veces el mismo lote no es un MIX (decisión del 03-11), queda ese lote. Gemelo: `mixCanonico`, en el esquema. */
+function _madDesMixCanon(l){
+  const m=/^MIX\((.+)\)$/.exec(l);
+  if(!m) return l;
+  const lotes=[];
+  m[1].split(",").forEach(function(x){ if(x && lotes.indexOf(x)===-1) lotes.push(x); });
+  lotes.sort();
+  return lotes.length>1 ? "MIX("+lotes.join(",")+")" : (lotes[0]||l);
+}
+/* A17 · lo que se perdería sin aviso al guardar: un MIX que no cierra o no cabe dejaría de ser un MIX, y un código o una piscina se cortarían (el código va en la llave). */
+function madDesTextoMal(x){
+  const r=[], lote=String((x||{}).lote==null?"":x.lote).toUpperCase().replace(/\s+/g,"");
+  const cg=String((x||{}).codigoGenetico==null?"":x.codigoGenetico).trim(), pis=String((x||{}).piscina==null?"":x.piscina).trim();
+  if(lote.indexOf("MIX(")===0 && (lote.length>40 || !/^MIX\(.*[^,()].*\)$/.test(lote))) r.push("«"+lote.slice(0,60)+"» no es un MIX válido: se escribe MIX(BN,BO), bien cerrado y en 40 caracteres como mucho. Elígelo con 📥 Cargar.");
+  if(cg.length>MAD_DESOVE_CG_MAX) r.push("El código genético de «"+(lote.slice(0,40)||"este registro")+"» no cabe: tiene "+cg.length+" caracteres y el tope es "+MAD_DESOVE_CG_MAX+".");
+  if(pis.length>MAD_DESOVE_PISCINA_MAX) r.push("La piscina de «"+(lote.slice(0,40)||"este registro")+"» no cabe: tiene "+pis.length+" caracteres y el tope es "+MAD_DESOVE_PISCINA_MAX+".");
+  return r;
+}
 /* 2026-11-03 · 200, no 60: el código de un MIX son los de todos sus lotes, y cortarlo partiría la llave de la hoja. */
-function madDesNormCG(s){ return sanitizeStr(s,200).toUpperCase().replace(/\s+/g,""); }
+const MAD_DESOVE_CG_MAX = 200, MAD_DESOVE_PISCINA_MAX = 60;
+function madDesNormCG(s){ return sanitizeStr(s,MAD_DESOVE_CG_MAX).toUpperCase().replace(/\s+/g,""); }
 /* 🔀 MIX (usuario, 2026-11-03): un pool de varios lotes va en UNA fila, con lote `MIX(BN,BO)` y los códigos y piscinas de los
    participantes. Lo que dejan en la tarjeta las opciones elegidas en 📥 Cargar, en orden fijo —la misma mezcla, la misma llave—.
    Dos códigos del MISMO lote no son un MIX: quedan como ese lote con los códigos juntos. Gemelo: `armarMix`, en el esquema. */
@@ -12941,6 +13159,8 @@ function madDesValidar(model){
   desoves.forEach(function(d, i){
     const x = d||{};
     const lote = madDesNormLote(x.lote), cg = madDesNormCG(x.codigoGenetico);
+    const textoMal = madDesTextoMal(x);
+    if(textoMal.length){ textoMal.forEach(function(e){ errores.push(e); }); return; }
     const et = cg ? "«"+cg+"»" : "el desove "+(i+1);
     if(lote==="") errores.push("Falta el lote "+(cg ? "de "+et : "del desove "+(i+1))+".");
     if(cg==="") errores.push("Falta el código genético del desove "+(i+1)+". Es lo que identifica el pool que desovó.");
@@ -12948,6 +13168,9 @@ function madDesValidar(model){
     const llave = lote+"|"+cg;
     if(vistos[llave]) errores.push("El lote "+lote+" con código "+cg+" aparece dos veces en esta fecha. Los dos escribirían la misma fila y el segundo pisaría al primero: regístralos sumados.");
     vistos[llave]=1;
+    [["desoves","los desoves",false],["huevos","el total de huevos",true],["hembrasNoViables","las hembras no viables",false],["n2","el N2",true],["n5","el N5",true]].forEach(function(c){
+      if(madCifraMala(x[c[0]])) errores.push(madCifraMalaTexto(et, c[1], x[c[0]], c[2]));
+    });
     // 🔒 EL CANDADO que pidió el usuario: N5 exige N2. Un N5 sin su N2 deja un hueco que
     // después nadie sabe si fue que no se contó o que se olvidó registrar.
     // 2026-09-16: mira la CIFRA, y sigue mirándola desde que las fechas se editan (2026-09-17): lo que dice que
@@ -13163,15 +13386,18 @@ async function madDesCargarReleer(el){
   catch(_){ caja.innerHTML = '<span style="color:#991b1b">No se pudieron leer las hojas. Reintenta con 📥.</span>'; return; }
   _madDesPintaCargar(caja);
 }
+// Con una hoja sin leer o recortada la lista puede quedarse corta, y se dice ANTES de enseñarla (A1). También en la pregunta del MIX: elige de esa misma lista (A17).
+function _madDesListaAviso(){
+  const mal = madLibroIncompleto(_madLibro);
+  return mal ? '<div style="color:#991b1b;margin-bottom:6px">⚠ '+escapeHtml(mal)+': la lista puede estar INCOMPLETA.</div>' : '';
+}
 function _madDesPintaCargar(caja){
   // La fecha es la de la ficha de la tarjeta: Desoves o, desde el punto 6, Inf. Supervisor.
   const f = document.getElementById(caja.closest(".mm-card") ? "mm-fecha" : "md-fecha");
   const fecha = (f && isValidDate(f.value)) ? f.value : today();
   const libro = _madLibroDeFicha(fecha) || _madLibro;
   const ops = madDesComposiciones(libro, madLibroFuentes().ingresos, fecha);
-  // Con una hoja sin leer o recortada la lista puede quedarse corta, y se dice ANTES de enseñarla (A1).
-  const mal = madLibroIncompleto(_madLibro);
-  caja.innerHTML = (mal ? '<div style="color:#991b1b;margin-bottom:6px">⚠ '+escapeHtml(mal)+': la lista puede estar INCOMPLETA.</div>' : '')
+  caja.innerHTML = _madDesListaAviso()
     + '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:6px;color:#1e40af">'
     +   '<span>En producción el '+escapeHtml(fecha)+', según el Ingreso y el libro. Toca uno:</span>'
     +   '<button class="btn" type="button" onclick="madDesCargarReleer(this)" style="font-size:11px" title="Vuelve a leer las hojas">🔄 Releer</button>'
@@ -13194,7 +13420,7 @@ function madDesMixAbrir(el){
   const ops = Array.prototype.slice.call(caja.querySelectorAll(".md-cargar-op"));
   if(ops.length < 2){ toast("Para un MIX hacen falta al menos dos opciones en producción.","warn",4000); return; }
   const dato = function(b, n){ return escapeHtml(b.getAttribute(n) || ""); };
-  caja.innerHTML = '<div style="color:#1e40af;margin-bottom:6px"><b>MIX</b> · ¿qué lotes participan? Elige al menos dos.</div>'
+  caja.innerHTML = _madDesListaAviso() + '<div style="color:#1e40af;margin-bottom:6px"><b>MIX</b> · ¿qué lotes participan? Elige al menos dos.</div>'
     + '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">' + ops.map(function(b){
         return '<label class="md-mix-op" style="display:flex;gap:8px;align-items:center;padding:7px 8px;border:1px solid #bfdbfe;border-radius:8px;background:#fff;cursor:pointer;font-size:12px">'
           + '<input type="checkbox" class="md-mix-chk" data-lote="'+dato(b,"data-lote")+'" data-cg="'+dato(b,"data-cg")+'" data-piscina="'+dato(b,"data-piscina")+'">'
@@ -13220,6 +13446,8 @@ function madDesMixAplicar(el){
   const m = madDesArmarMix(elegidos);
   // madDesNormLote corta a 40: un nombre más largo escribiría otro lote, sin cerrar el paréntesis.
   if(m.lote.length > 40){ toast("Son demasiados lotes para un solo MIX: el nombre no cabe en la hoja.","err",5000); return; }
+  // A17 · igual el código (va en la llave) y la piscina: se cortarían sin aviso.
+  if(m.codigoGenetico.length > MAD_DESOVE_CG_MAX || m.piscina.length > MAD_DESOVE_PISCINA_MAX){ toast("Son demasiados lotes para un solo MIX: sus códigos o sus piscinas no caben en la hoja.","err",5000); return; }
   const esSup = card.classList.contains("mm-card"), p = esSup ? ".mm-" : ".md-";
   const pon = function(sel, v){ const e=card.querySelector(sel); if(e) e.value=v; return e; };
   const lote = pon(p+"lote", m.lote);
@@ -13983,6 +14211,9 @@ function madFinValidar(model){
     const llave = lote+"|"+madFinMotivoTag(motivo);
     if(vistos[llave]) errores.push("El lote "+lote+" se cierra dos veces por «"+motivo+"» en esta fecha. Los dos escribirían la misma fila y el segundo borraría al primero: regístralos sumados.");
     vistos[llave]=1;
+    [["machos","los machos"],["hembras","las hembras"],["rojos","los rojos"]].forEach(function(s){
+      if(madCifraMala(x[s[0]])) errores.push(madCifraMalaTexto(et, s[1], x[s[0]], false));
+    });
     const mach = madIngInt(x.machos), hemb = madIngInt(x.hembras);
     if((mach===""||mach===0) && (hemb===""||hemb===0)){
       // Un cierre TOTAL sin cifras es legítimo: cierra el lote igual; sólo falta la constancia de lo que
@@ -14677,6 +14908,17 @@ function madMortValidar(model){
     const x=c||{}, lote=madDesNormLote(x.lote), cg=madDesNormCG(x.codigoGenetico);
     const conCifras=MAD_MORT_TIPOS.filter(function(tipo){ const t=x[_MAD_MORT_CLAVE[tipo]]||{}; return madIngInt(t.entran)!=="" || madIngInt(t.muertas)!=="" || (tipo==="Desove" && _madNaupCrudo(t.temperatura)!==""); });
     const conRevision=MAD_NAUP_REVISIONES.filter(function(rev){ return _madNaupConDato(_madNaupRevision(x, rev)); });
+    const textoMal = madDesTextoMal(x);
+    if(textoMal.length){ textoMal.forEach(function(e){ errores.push(e); }); return; }
+    // A16 · antes que nada: con «-3», `conCifras` diría que no hay ninguna cifra. Un negativo no es «sin cifra».
+    let malas=false;
+    MAD_MORT_TIPOS.forEach(function(tipo){
+      const t=x[_MAD_MORT_CLAVE[tipo]]||{}, donde=(lote||"el registro "+(i+1))+" (tanques de "+(tipo==="Desove" ? "desove" : "recuperación")+")";
+      [["entran","las hembras que entran"],["muertas","las muertas"]].forEach(function(c){
+        if(madCifraMala(t[c[0]])){ malas=true; errores.push(madCifraMalaTexto(donde, c[1], t[c[0]], false)); }
+      });
+    });
+    if(malas) return;
     if(!lote && !conCifras.length && !conRevision.length) return;
     if(!lote){ errores.push("Falta el lote del registro "+(i+1)+"."); return; }
     if(!conCifras.length && !conRevision.length){ errores.push("El lote "+lote+" no trae ninguna cifra ni revisión de nauplios."); return; }
@@ -18213,7 +18455,17 @@ function saveMadSalasGrid(opts){
   return saved + zSaved;
 }
 
-async function syncMadSalasGrid(){
+/* 2026-11-04 (usuario: «Bloquear la grilla») · Al terminar, ☁️ repinta la grilla desde lo guardado, y lo tecleado mientras esperaba se borraba
+   sin aviso. Dejarlo en pantalla no es salida: en Tanques, ☁️ ya cerró el parte, y guardar de nuevo abriría otro con las mismas cifras, que el
+   libro restaría dos veces. Así que mientras envía no se puede teclear. */
+async function _madGridBloqueada(panel, enviar){
+  const fp = document.getElementById(panel);
+  if(fp){ fp.inert = true; fp.style.opacity = "0.6"; fp.style.pointerEvents = "none"; }
+  try{ return await enviar(); }
+  finally{ if(fp){ fp.inert = false; fp.style.opacity = ""; fp.style.pointerEvents = ""; } }
+}
+async function syncMadSalasGrid(){ return _madGridBloqueada("fp-salas", _syncMadSalasGrid); }
+async function _syncMadSalasGrid(){
   if(saveMadSalasGrid() === -1) return;   // almacenamiento falló, o una temperatura fuera de rango lo bloqueó (ya avisó): no enviar lo que no se guardó
   const url = gasUrl();
   if(!url){ toast("Configura la URL de Google Apps Script","warn"); openCfg(); return; }
@@ -18404,6 +18656,7 @@ async function _madZonasSync(pend){
   setSyncUI("pend","Enviando "+pend.length+" fila(s) de zonas…");
   const payload = buildMadPayload("zonas", pend);
   const opts = { mark:{ kind:"mad:zonas", keys: pend.map(p=>p.id) } };   // F3: si acaba en la cola, se marcan solas al entregarse
+  _marcaSellar(opts.mark, pend);   // pauta A2: `pend` se leyó antes de enviar las Salas
   const sent = await _madZonasEnviar(payload, opts);
   if(sent){
     _marcarEnviado(opts);
@@ -19459,7 +19712,7 @@ function saveMadTanquesGrid(opts){
      2026-11-03 · sin guardar NO se repinta: la grilla sale de lo guardado, y borraba de la pantalla lo recién tecleado. */
   if(_ok && !opts.noRender) renderMadTanques();
   updateDots(); updateSyncUI();
-  if(!_ok) return -1;
+  if(!_ok){ opts.lista = list; return -1; }   // lo que no se pudo guardar, para quien lo quiera enviar igual (syncMadTanquesGrid)
   if(!silent) toast("💾 Parte "+parte+" de las "+hora+" · "+saved+" tanque(s) guardado(s)","ok",3000);
   return saved;
 }
@@ -19574,28 +19827,48 @@ function _madTqNoEnviado(){
   toast("Tanques NO enviado: se queda pendiente en este dispositivo. Si era la misma ronda, no hace falta enviarla (🗑 Borrar sala la descarta del dispositivo; lo ya enviado sigue en la hoja).","warn",9000);
 }
 
-async function syncMadTanquesGrid(){
-  if(saveMadTanquesGrid() === -1) return;
+/* 2026-11-04 (pauta A6, usuario: «Enviar lo de pantalla») · La hoja ya tiene esto (o la cola, si cupo allí) y este equipo no tiene sitio para
+   anotarlo: lo que guardaba de esos registros se retira, o un envío posterior escribiría lo viejo encima. Una lista más corta siempre cabe;
+   sin nada que retirar no se escribe, o con el almacén lleno saldría un «no se pudo guardar» falso justo después de llegar a la hoja. */
+function _madTqSoltarEnviados(pending){
+  const fuera = new Set(pending.map(r => r.id));
+  const antes = loadMad("tanques");
+  const quedan = antes.filter(r => !(r && fuera.has(r.id)));
+  if(quedan.length !== antes.length) saveMadList("tanques", quedan);
+  pending.forEach(r => { if(r.data) _madRecDescartar("tanques", r.data.sala, r.data.fecha); });
+}
+async function syncMadTanquesGrid(){ return _madGridBloqueada("fp-tanques", _syncMadTanquesGrid); }
+async function _syncMadTanquesGrid(){
+  /* 2026-11-04 (pauta A6, usuario: «Enviar lo de pantalla») · Sin sitio para guardar se envía igual lo que hay en pantalla, como las fichas de
+     Larvicultura: la hoja es el respaldo que de verdad cuenta, y es justo cuando más falta hace. Y entonces no se repinta hasta saber que
+     llegó: la grilla sale de lo guardado, y borraría de la pantalla lo único que hay. */
+  const _g = {};
+  const sinCopia = saveMadTanquesGrid(_g) === -1 ? _g.lista : null;
   const url = gasUrl();
   if(!url){ toast("Configura la URL de Google Apps Script","warn"); openCfg(); return; }
   if(!isValidGasUrl(url)){ toast("URL inválida","err"); return; }
   if(!syncRateOk()) return;
-  const pending = loadMad("tanques").filter(r => !r.synced);
+  const pending = (sinCopia || loadMad("tanques")).filter(r => !r.synced);
   if(pending.length === 0){ toast("Sin pendientes","info"); return; }
-  if(!(await _madTqConfirmarRepetidas(pending))){ _madTqNoEnviado(); renderMadTanques(); updateDots(); updateSyncUI(); return; }   // 2026-09-30 · ¿ronda repetida?
+  if(!(await _madTqConfirmarRepetidas(pending))){ _madTqNoEnviado(); if(!sinCopia) renderMadTanques(); updateDots(); updateSyncUI(); return; }   // 2026-09-30 · ¿ronda repetida?
   setSyncUI("pend","Enviando "+pending.length+" tanque(s)…");
   const payload = buildMadPayload("tanques", pending);
   const opts = { mark:{ kind:"mad:tanques", keys: pending.map(p=>p.id) } };   // F3
+  _marcaSellar(opts.mark, pending);   // pauta A2: `pending` se leyó antes de esperar a la hoja
   const sent = await _madTanquesEnviar(payload, opts);   // R2 · con el portón del sello
+  const _aSalvo = sent || opts.outcome === "queued";
+  if(sinCopia && _aSalvo) _madTqSoltarEnviados(pending);
   if(sent){
-    _marcarEnviado(opts);
+    if(!sinCopia) _marcarEnviado(opts);
     setSyncUI("ok",pending.length+" tanque(s) sincronizado(s) ✔");
-    toast("✅ Tanques enviados a Google Sheets","ok");
+    if(sinCopia) toast("✅ Tanques enviados a Google Sheets. Este equipo no tiene espacio y no guardó copia: si hay que corregir esa ronda, se hace en la hoja.","warn",9000);
+    else toast("✅ Tanques enviados a Google Sheets","ok");
     setTimeout(()=> setSyncUI("idle","Todo sincronizado"), 3500);
   } else {
     _syncNotOkUI(opts.outcome, "Error al sincronizar Tanques", null, opts.gasMessage);
+    if(sinCopia && _aSalvo) toast("⚠️ Este equipo no tiene espacio: esa ronda sólo queda en la cola, no en la lista de Tanques.","warn",9000);
   }
-  renderMadTanques();
+  if(!sinCopia || _aSalvo) renderMadTanques();
   updateDots(); updateSyncUI();
 }
 
@@ -23117,7 +23390,7 @@ const _MNT_NUMEROS_TRABAJO = [
 ];
 
 /* ── Las reglas (puras) ─────────────────────────────────── */
-function _mntEsDia(d){ return /^\d{4}-\d{2}-\d{2}$/.test(String(d || "")); }
+function _mntEsDia(d){ return isValidDate(String(d || "")); }   // A16 · un día REAL: el patrón solo dejaba pasar 2026-13-45
 function mntEsHora(h){ return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(h || "")); }
 function mntEquipo(codigo){ return MNT_EQUIPOS.find(function(q){ return q.codigo === codigo; }) || null; }
 /** Un número tecleado: «534,51», «534.51», «1,028.42» o «1.028,42» (el ÚLTIMO separador es el decimal). "" si está vacío;
@@ -26865,6 +27138,7 @@ async function syncAllPendingTras(){
     const lote = lotes[i];
     if(lotes.length > 1) setSyncUI("pend","Enviando lote "+(i+1)+" de "+lotes.length+"…");
     const opts = { dedupeSalt: lote.map(p=>p.id).join(","), mark:{ kind:"tras", keys: lote.map(p=>p.id) } };
+    _marcaSellar(opts.mark, lote);   // pauta A2: los lotes se armaron antes de enviar el primero
     const sent = await postPayload(buildTrasPayload(lote), url, opts);
     if(!sent){ fallo = opts; break; }
     _marcarEnviado(opts);
