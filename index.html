@@ -1102,7 +1102,7 @@ td.gridsel-cell{background:rgba(0,191,165,.18)!important;outline:1.5px solid var
         <label>Espacio de este navegador</label>
         <div id="cfg-espacio" style="font-size:11px;color:var(--tx3);line-height:1.5;margin-top:3px"></div>
         <div style="margin-top:6px">
-          <button class="btn bo" type="button" onclick="liberarEspacio()" title="Quita lo ya enviado de más de 7 días de Salas, Tanques, Zonas y el Historial de Maduración, y la copia de la MATRIZ. Nunca lo pendiente">🧹 Liberar espacio</button>
+          <button class="btn bo" type="button" onclick="liberarEspacio()" title="Quita lo ya enviado de más de 7 días de Salas, Tanques, Zonas y el Historial de Maduración, y, si lo aceptas, la copia de la MATRIZ. Nunca lo pendiente">🧹 Liberar espacio</button>
         </div>
         <span style="font-size:10.5px;color:var(--tx3);margin-top:3px;line-height:1.5">
           Lo ya enviado de más de 7 días se quita solo al entrar en Maduración. Lo pendiente nunca se borra.
@@ -2556,7 +2556,13 @@ function toast(msg, type="info", dur=3500){
 /* ══════════════════════════════════════════
    SYNC UI
 ══════════════════════════════════════════ */
-function setSyncUI(st, lbl){
+function setSyncUI(st, lbl, yaContado){
+  /* A14 (2026-11-05) · Igual de falso con algo sin enviar en el módulo: lo decide lo pendiente, no quien llama. `yaContado`,
+     cuando quien llama acaba de contarlo (`_syncUIResumen`), para no contar dos veces. */
+  if(st === "idle" && lbl === "Todo sincronizado" && !yaContado && typeof _pendientesDelModulo === "function"){
+    const _p = _pendientesDelModulo();
+    if(_p[0]){ _syncUIResumen(_p[0], _p[1]); return; }
+  }
   /* B (2026-09-24, usuario) · «Todo sincronizado» con envíos esperando en la cola era FALSO (las fichas de formulario de
      Maduración y el reproductivo no tienen otro registro que los cuente). Lo decide la cola, no quien llama: son más de
      veinte los sitios que lo ponen tras un envío. */
@@ -3044,8 +3050,12 @@ const SYNCQ_KEY = "larv4_syncqueue";
 const SYNCQ_MAX = 50;
 /* B (2026-09-24, usuario) · 7 DÍAS, no 24 h, y lo que caduque SE AVISA (_colaAvisaDescartes): a las 24 h se borraba en
    silencio, y el reproductivo —sin copia en el dispositivo— lo perdía sin rastro. Contrapartida aceptada: un envío que
-   llega días después puede pisar una corrección hecha a mano en la hoja entre medias. */
-const SYNCQ_TTL = 7 * 24 * 60 * 60 * 1000;
+   llega días después puede pisar una corrección hecha a mano en la hoja entre medias.
+   2026-11-05 (pauta A8, usuario: «No caduca sola») · YA NO CADUCA. A los 7 días se descartaba con aviso, pero un formulario no tiene otra copia:
+   la ficha se limpió al encolarse y el Historial caducaba con ella. El aviso decía «revísalos» y no quedaba nada que revisar. Sigue intentándolo
+   hasta que llegue o la hoja lo rechace por sus datos; lo único que descarta es el tope de SYNCQ_MAX, que avisa. La contrapartida sigue, y va a
+   más: por eso lo que llega con más de este tiempo se dice. */
+const SYNCQ_VIEJO_MS = 7 * 24 * 60 * 60 * 1000;
 let _flushingQueue = false;
 
 function _loadSyncQueue(){
@@ -3477,10 +3487,10 @@ async function flushSyncQueue(opts){
   _flushingQueue = true;
   try{
     const now = Date.now();
-    q = q.filter(it => it && (now - (it.ts || 0)) < SYNCQ_TTL); // purga vencidos
+    q = q.filter(it => it);
     const remaining = [];
     const _entregados = new Set();   // A (2026-09-24) · los que este vaciado ENTREGÓ, por su identidad (ver el final)
-    let sent = 0, rejected = 0, reconciled = false;
+    let sent = 0, rejected = 0, reconciled = false, viejos = 0;
     // Los rechazos de ENTORNO se cuentan aparte: no son un error del usuario y su
     // envío sigue vivo en la cola. Se guarda un motivo de cada clase para el aviso.
     let enEspera = 0, msgEntorno = "", msgDatos = "";
@@ -3526,12 +3536,13 @@ async function flushSyncQueue(opts){
       const res = await _postOnce(body, finalUrl, _info);
       if(res === "ok"){
         sent++;
+        if((now - (it.ts || 0)) >= SYNCQ_VIEJO_MS) viejos++;
         _entregados.add(_claveCola(it));
         if(_reconcileMark(it.mark)) reconciled = true;   // F3: entregado → marca los registros locales
       } else if(res === "rejected" && _esRechazoDeEntorno(_info.message)){
         // El dato está bien; lo que falta se arregla FUERA (re-desplegar el GAS, poner
         // el token). Se conserva para que el vaciado automático lo entregue solo. La
-        // cola no se atasca: tiene TTL de 7 días y tope de SYNCQ_MAX (los dos, avisados).
+        // cola no se atasca: tiene tope de SYNCQ_MAX, avisado.
         remaining.push(it); _noSalieron.push(it);
         enEspera++; msgEntorno = _info.message || msgEntorno;
       } else if(res === "rejected"){
@@ -3546,19 +3557,17 @@ async function flushSyncQueue(opts){
     /* 🔴 A (2026-09-24) · LA COLA SE RELEE AL TERMINAR. Se escribía la foto del PRINCIPIO menos lo entregado, y con el GAS
        lento un vaciado dura minutos: lo que se encolaba mientras tanto se PERDÍA, y lo que otro envío más nuevo había
        purgado (_purgeQueueMark, _enqueueSync) RESUCITABA para pisar después los datos buenos con los viejos. Ahora sólo
-       se quita lo que ESTE vaciado resolvió —entregado o rechazado por sus datos— y lo caducado; lo demás, como esté.
+       se quita lo que ESTE vaciado resolvió —entregado o rechazado por sus datos—; lo demás, como esté.
        Y lo entregado reconcilia la marca que tenga AHORA: un guardado idéntico que se sumó mientras tanto (_enqueueSync)
        también llegó, y su fila del registro no puede acabar en «⚠ no llegó». */
     const _resueltos = new Set(q.filter(it => remaining.indexOf(it) === -1).map(_claveCola));
-    const _ahora = Date.now();
-    const _leida = _loadSyncQueue().filter(it => it);
-    const _cola = _leida.filter(it => (_ahora - (it.ts || 0)) < SYNCQ_TTL);
-    // B (2026-09-24) · lo que caduca ya no sale en silencio.
-    _colaAvisaDescartes(_leida.filter(it => (_ahora - (it.ts || 0)) >= SYNCQ_TTL), "llevaban 7 días sin poder salir");
+    const _cola = _loadSyncQueue().filter(it => it);
     _cola.forEach(it => { if(_entregados.has(_claveCola(it)) && _reconcileMark(it.mark)) reconciled = true; });
     _saveSyncQueue(_cola.filter(it => !_resueltos.has(_claveCola(it))));
     if(sent > 0 || rejected > 0 || enEspera > 0){
       if(sent > 0)     toast("✅ "+sent+" envío(s) pendiente(s) de la cola completados", "ok", 4000);
+      // pauta A8 · también en el reintento automático: esto no es lo que espera, es lo que acaba de escribirse en la hoja.
+      if(viejos > 0)   toast("⚠️ Llegaron a la hoja "+viejos+" envío(s) de hace más de 7 días: si alguien corrigió esas filas después, quedó lo de entonces. Revísalas.", "warn", 9000);
       // El de ENTORNO no dice «revisa los datos»: los datos están bien y siguen en cola.
       // B · el reintento automático no lo repite cada minuto: lo que espera lo dice el indicador.
       if(enEspera > 0 && !_auto) toast("⏳ "+enEspera+" envío(s) esperando en la cola"+_gasMotivo(msgEntorno)
@@ -3615,6 +3624,20 @@ async function _colaTick(){
 // con los ~20 llamadores existentes.
 // E (2026-09-24, usuario) · `opts.sinAvisos`: quien llama da él UN aviso por la acción entera (los cuatro flujos del
 // reproductivo), así que aquí se callan los tres propios —en curso, idéntico y en cola— y sólo queda `opts.outcome`.
+/* 2026-11-04 (pauta A5, usuario: «Solo en la app») · EL reqId DE UN ENVÍO. El GAS recuerda 10 min cada reqId ya escrito y contesta «ok» sin
+   escribir. Si fuera sólo la huella del contenido, con 28, 29 y otra vez 28 el tercero parecería un reintento del primero, y la hoja se
+   quedaría en 29 con el equipo diciendo «enviado». Así que un contenido que vuelve DESPUÉS DE OTRO DISTINTO lleva otro reqId; repetido seguido,
+   el mismo. Un reintento conserva el suyo, también en la cola: un reintento tardío sigue sin poder pisar lo nuevo.
+   Volver a escribir no duplica: todas las hojas reemplazan por clave (lo vigila cola-volver-atras.test.js). Por página, y no guardado: tras
+   recargar, otro reqId, que reescribe lo mismo. Delante de la huella, porque el GAS corta a 120 caracteres. */
+const _reqGen = new Map();   // hoja → { fp: la última huella, n: cuántas distintas van }
+const _reqSesion = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+function _reqIdDeEnvio(hoja, fp){
+  if(!fp) return fp;
+  const st = _reqGen.get(hoja) || { fp:"", n:0 };
+  if(st.fp !== fp){ st.fp = fp; st.n++; _reqGen.set(hoja, st); }
+  return _reqSesion + "." + st.n + "~" + fp;
+}
 async function postPayload(payload, url, opts){
   if(opts) _marcaSellar(opts.mark);
   const _setOut = (v)=>{ if(opts) opts.outcome = v; };
@@ -3637,6 +3660,7 @@ async function postPayload(payload, url, opts){
     }
   }
   _syncInFlight.add(flightKey);
+  const _rid = _reqIdDeEnvio(flightKey, _fp);
   try{
     // Adjunta el sessionId como query (?z=...) para que el rate-limit del
     // GAS sea por dispositivo y no global. Compatible con URLs que ya
@@ -3646,7 +3670,7 @@ async function postPayload(payload, url, opts){
     // ── Token compartido + reqId (idempotencia) ──────────────────────
     // `token`: autenticación opcional (el GAS sólo lo valida si tiene token: la propiedad del script
     //   SHARED_TOKEN o, si falta, su constante, hoy vacía; sin token, se ignora — BC).
-    // `reqId`: huella del payload. El GAS la recuerda ~10 min (CacheService);
+    // `reqId`: ver _reqIdDeEnvio. El GAS lo recuerda ~10 min (CacheService);
     //   si llega otra vez el MISMO reqId, responde "ok" sin volver a escribir.
     //   Esto hace que CUALQUIER reintento (en línea o desde la cola offline)
     //   sea idempotente y nunca duplique, ni siquiera en hojas append-only.
@@ -3655,7 +3679,7 @@ async function postPayload(payload, url, opts){
     const _gasTok = gcfg("gas-token", "");
     const extra = {};
     if(_gasTok) extra.token = _gasTok;
-    if(_fp)     extra.reqId = _fp;
+    if(_rid)    extra.reqId = _rid;
     const bodyPayload = Object.keys(extra).length
       ? Object.assign({}, payload, extra)
       : payload;
@@ -3667,15 +3691,15 @@ async function postPayload(payload, url, opts){
     let res = "retry";
     const _gasInfo = {};
     let _directo = true;
-    if(_fp && opts && _colaSolapa(opts.mark, payload.sheetName)){
+    if(_rid && opts && _colaSolapa(opts.mark, payload.sheetName)){
       /* 2026-11-03 (pauta 1.2) · Detrás del lote viejo, y se vacía la cola: primero llega lo viejo y luego esto, así que gana lo último.
          Si no sale, sigue en la cola y lo demás es el camino de siempre: «en cola», «rechazado» o, si no cupo, el error. */
-      if(_enqueueSync(payload, _fp, url, opts.mark)){
+      if(_enqueueSync(payload, _rid, url, opts.mark)){
         _directo = false;
-        _colaRechazos.delete(_fp);
+        _colaRechazos.delete(_rid);
         await _colaVaciarConTope();
-        if(_colaRechazos.has(_fp)){ _gasInfo.message = _colaRechazos.get(_fp); res = "rejected"; }
-        else if(!_loadSyncQueue().some(it => it && it.reqId === _fp)) res = "ok";
+        if(_colaRechazos.has(_rid)){ _gasInfo.message = _colaRechazos.get(_rid); res = "rejected"; }
+        else if(!_loadSyncQueue().some(it => it && it.reqId === _rid)) res = "ok";
       } else {
         /* 2026-11-04 (pauta A6, usuario: «vaciar primero») · No cupo en la cola, y eso no es razón para no enviar si hay señal: se vacía lo
            que espera —que además hace sitio— y, si ya nada se pisa con esto, sale directo. Si no, no pasa delante: acaba en el «sin espacio» de abajo. */
@@ -3716,7 +3740,7 @@ async function postPayload(payload, url, opts){
     // timeout o respuesta ambigua). Se encola para reintento automático; el dato
     // se entregará y verificará solo (F3), así que NO es un error para el usuario.
     // 🔴 2026-10-04 · sólo es «en cola» si de verdad quedó en la cola (sin espacio no queda: ver _saveSyncQueue).
-    if(!_enqueueSync(payload, _fp, url, opts && opts.mark)){
+    if(!_enqueueSync(payload, _rid, url, opts && opts.mark)){
       if(opts) opts.gasMessage = SYNCQ_SIN_ESPACIO;
       _setOut("error");
       return false;
@@ -3763,6 +3787,26 @@ function _madReproNotOk(lista, extra){
   if(l.some(o=> o.outcome === "inflight")){ toast("Todavía se está enviando el registro anterior: espera a que termine y vuelve a procesarlo."+mas,"warn",6000); return; }
   const rej = l.find(o=> o.gasMessage);
   toast("No se pudo enviar a Google Sheets"+_gasMotivo(rej && rej.gasMessage)+". Reintenta."+mas,"err",6000);
+}
+/* 2026-11-05 (pauta A12) · 🔄 CON UNA FECHA POR ENVÍO. La fecha es llave de la fila (Fecha+Módulo+Tanque) y un envío lleva una sola: con
+   Población de hoy y Calidad de ayer, lo de ayer caía en la fila de hoy, y lo ya enviado de otra fecha volvía a viajar dentro del envío de hoy.
+   Si todas las fichas coinciden, un solo envío sin fecha propia, el de siempre. Si no, uno por fecha, sólo con lo pendiente y de lo más viejo a
+   lo más nuevo. Una ficha sin fecha va con la general, y sin corrida ni técnico, con los del módulo: lo que le daba el envío único. */
+function _datosPorFecha(m, pend){
+  const orden = ["poblacion","calidad","plg","despacho","calagua"];   // el de buildDatosPayload
+  const datoDe = (f) => (loadE(m, f) || { data:{} }).data;
+  const fechaDe = (f) => { const d = datoDe(f).fecha || ""; return isValidDate(d) ? d : ""; };
+  const general = orden.map(fechaDe).find(Boolean) || "";
+  if(orden.every((f) => !fechaDe(f) || fechaDe(f) === general)) return [{ fichas:pend, fecha:"", datos:null }];
+  const primero = (k) => orden.map((f) => datoDe(f)[k] || "").find(Boolean) || "";
+  const corrida = primero("corrida"), tec = primero("tec");
+  const porFecha = {};
+  pend.forEach((f) => { const d = fechaDe(f) || general; (porFecha[d] = porFecha[d] || []).push(f); });
+  return Object.keys(porFecha).sort().map((d) => {
+    const datos = {};
+    porFecha[d].forEach((f) => { const x = datoDe(f); datos[f] = Object.assign({}, x, { corrida: x.corrida || corrida, tec: x.tec || tec }); });
+    return { fichas:porFecha[d], fecha:d, datos:datos };
+  });
 }
 async function syncAll(){
   // Atajo: Microbiología delega en syncMic / syncCal (reemplazo por sesión a sus hojas).
@@ -3954,23 +3998,24 @@ async function syncAll(){
     // ── Hoja 1: Datos Larvicultura ──
     // Despacho también escribe en esta hoja (cols 37–41), por lo que su
     // estado pendiente debe disparar la sincronización del payload.
-    const pendDatos = ["calidad","plg","poblacion","despacho","calagua"].filter(f => getStatus(curMod,f)==="pending");
-    if(pendDatos.length > 0){
+    const _pendDatos = ["calidad","plg","poblacion","despacho","calagua"].filter(f => getStatus(curMod,f)==="pending");
+    for(const _g of (_pendDatos.length > 0 ? _datosPorFecha(curMod, _pendDatos) : [])){
+      const pendDatos = _g.fichas, _nomDatos = "Datos Larvicultura" + (_g.fecha ? " del " + _diaCorto(_g.fecha) : "");
       total++;
-      toast("Enviando Datos Larvicultura…","info",2000);
-      const dp = buildDatosPayload(curMod);
+      toast("Enviando " + _nomDatos + "…","info",2000);
+      const dp = _g.fecha ? buildDatosPayload(curMod, pendDatos, { dataByFicha:_g.datos, fecha:_g.fecha }) : buildDatosPayload(curMod);
       if(dp.rows.length > 0){
         const opts = { mark: _marcaFichas(curMod, pendDatos) };
         const sent = await postPayload(dp, url, opts);
         if(sent){
           _marcarEnviado(opts);   // con su Historial
           ok++;
-        } else { const _b=_syncAllBucket(opts, "Datos Larvicultura"); if(_b==="queued") queued++; else if(_b==="fail") fail++; }
+        } else { const _b=_syncAllBucket(opts, _nomDatos); if(_b==="queued") queued++; else if(_b==="fail") fail++; }
       } else {
         // Sin filas por tanque: nada llegó a Sheets. NO marcar como
         // sincronizado (evita un ✅ falso); la(s) ficha(s) siguen pendientes.
         total--;
-        toast("ℹ️ Datos Larvicultura sin valores por tanque — no se envió nada","info",4000);
+        toast("ℹ️ " + _nomDatos + " sin valores por tanque — no se envió nada","info",4000);
       }
     }
     // ── Hoja 2: Control_Tanque ──
@@ -4214,13 +4259,15 @@ function buildGrid(){
     <span class="mc-dot"></span>
   </div>`;
   // As Técnico tile — pinta dot pend/sync según historial local.
-  // Cuenta las DOS fichas del módulo (Supervisión y Traslado): si sólo mirara la
-  // primera, un traslado pendiente no encendería el punto y nadie sabría que falta
-  // por enviar hasta entrar en la pestaña.
+  // Cuenta las CUATRO listas del módulo (Supervisión, Traslado, Score y Auditoría): si
+  // sólo mirara algunas, lo pendiente de las otras no encendería el punto y nadie sabría
+  // que falta por enviar hasta entrar en la pestaña.
   const astList = (typeof loadAst === "function") ? loadAst() : [];
   const trasLst = (typeof loadTras === "function") ? loadTras() : [];
-  const astPend = astList.some(r => !r.synced) || trasLst.some(r => !r.synced);
-  const astSync = astList.some(r => r.synced)  || trasLst.some(r => r.synced);
+  const scoreLst = (typeof loadScore === "function") ? loadScore() : [];   // A14
+  const audLst = (typeof loadAud === "function") ? loadAud() : [];         // A14
+  const astPend = [astList, trasLst, scoreLst, audLst].some(l => l.some(r => !r.synced));
+  const astSync = [astList, trasLst, scoreLst, audLst].some(l => l.some(r => r.synced));
   const astCls  = astPend?"pend":astSync?"sync":"";
   h += `<div class="mc mc-ast ${astCls}" id="mc13" onclick="pickMod(13)">
     <div class="mc-num">AsT</div>
@@ -4358,6 +4405,16 @@ function enter(){
 }
 
 function goBack(){
+  /* 2026-11-05 (pauta A7, usuario: «Preguntar») · Salir no guarda la grilla: deja su copia de recuperación. Sin sitio tampoco para ella,
+     lo tecleado se perdería: se pregunta. Quien sigue ya lo da por perdido: no se le vuelve a preguntar al volver. */
+  if(isMadMod(curMod) && MAD_FICHAS.includes(curTab) && _madGridDirty){
+    let _copia = true;
+    try{ _copia = saveMadRecovery() !== false; }catch(_){}
+    if(!_copia){
+      if(!confirm(MAD_GRID_SIN_ESPACIO)) return;
+      _madGridDirty = false;
+    }
+  }
   // Respalda la grilla Biomol / el formulario As Técnico antes de salir
   // (recuperación de lo no guardado).
   try{ if(isBioMod(curMod)) saveBioRecovery(); }catch(_){}
@@ -4493,7 +4550,12 @@ function selTab(t){
   }
   // Al salir de una grilla de Maduración, persiste lo tecleado/pegado de la grilla
   // activa antes de cambiar de pestaña (anti-pérdida; curTab aún es la pestaña vieja).
-  if(isMadMod(curMod) && MAD_FICHAS.includes(curTab)){ try{ _madCommitActive(); }catch(_){} }
+  // Si no se pudo y se decide quedarse, no se cambia de pestaña (pauta A7).
+  if(isMadMod(curMod) && MAD_FICHAS.includes(curTab)){
+    let _seguir = true;
+    try{ _seguir = _madGridSePuedeDejar(); }catch(_){}
+    if(!_seguir) return;
+  }
   // 2026-09-24 · y al salir de una ficha de FORMULARIO, lo tecleado pendiente se guarda ya (hasta hoy no se guardaba aquí).
   if(isMadMod(curMod) && MAD_BORR_FICHAS[curTab]){ try{ madBorrGuardarYa(curTab); }catch(_){} }
   // Grilla de Mareas: vuelca lo tecleado/pegado antes de cambiar de pestaña.
@@ -4616,38 +4678,36 @@ function updateDots(){
    «N en cola» si la cola tiene algo. */
 function _syncUIResumen(p, cosa){
   const q = syncQueueLen();
-  if(!p){ setSyncUI("idle","Todo sincronizado"); return; }
+  if(!p){ setSyncUI("idle","Todo sincronizado", true); return; }
   setSyncUI("pend", p + " " + cosa + " pendiente(s)" + (q ? " · " + q + " en cola" : ""));
 }
-function updateSyncUI(){
-  if(isMntMod(curMod)){ _syncUIResumen(mntPendientes(), "registro(s)"); return; }   // 🔧 Mantenimiento (2026-10-28)
+/* A14 (2026-11-05) · Lo pendiente del módulo abierto: [cuántos, de qué]. Lo cuenta uno solo: la cabecera, «Todo sincronizado»
+   y el aviso al cerrar contaban cada uno otra cosa. Sin módulo abierto sale 0: `loadE` sólo da registros de ese módulo. */
+function _pendientesDelModulo(){
+  if(isMntMod(curMod)) return [mntPendientes(), "registro(s)"];   // 🔧 Mantenimiento (2026-10-28)
   if(isMicMod(curMod)){
-    const p = loadMic().filter(r=>!r.synced).length + (typeof _calRaw==="function"?_calRaw().filter(r=>!r.synced).length:0) + (typeof _patRaw==="function"?_patRaw().filter(r=>!r.synced).length:0);
-    _syncUIResumen(p, "muestra(s)");
-    return;
+    return [loadMic().filter(r=>!r.synced).length + (typeof _calRaw==="function"?_calRaw().filter(r=>!r.synced).length:0) + (typeof _patRaw==="function"?_patRaw().filter(r=>!r.synced).length:0), "muestra(s)"];
   }
-  if(isBioMod(curMod)){
-    const p = loadBio().filter(r => !r.synced).length;
-    _syncUIResumen(p, "registro(s)");
-    return;
-  }
+  if(isBioMod(curMod)) return [loadBio().filter(r => !r.synced).length, "registro(s)"];
   if(isAstMod(curMod)){
-    const p = loadAst().filter(r => !r.synced).length
+    return [loadAst().filter(r => !r.synced).length
+      + ((typeof loadTras === "function") ? loadTras().filter(r => !r.synced).length : 0)     // 🚚 Traslado (A14)
       + ((typeof loadScore === "function") ? loadScore().filter(r => !r.synced).length : 0)   // 🎯 Score (2026-10-02)
-      + ((typeof loadAud === "function") ? loadAud().filter(r => !r.synced).length : 0);     // 🧾 Auditoría (2026-10-03)
-    _syncUIResumen(p, "registro(s)");
-    return;
+      + ((typeof loadAud === "function") ? loadAud().filter(r => !r.synced).length : 0), "registro(s)"];     // 🧾 Auditoría (2026-10-03)
   }
   if(isMadMod(curMod)){
     let p = 0;
     MAD_FICHAS.forEach(f => { p += loadMad(f).filter(r => !r.synced).length; });
     p += madLocTotal();   // PE1.4 · lo guardado con 💾 en las fichas de formulario también está pendiente
-    _syncUIResumen(p, "registro(s)");
-    return;
+    return [p, "registro(s)"];
   }
-  const tabs = isLabMod(curMod) ? ["algas"] : STD_FICHAS_ALL;
-  const p = tabs.filter(f=>getStatus(curMod,f)==="pending").length;
-  _syncUIResumen(p, "ficha(s)");
+  const lab = isLabMod(curMod), tabs = lab ? ["algas"] : STD_FICHAS_ALL;
+  // A14 (usuario: «Sí, también») · y lo de días anteriores sin enviar, como la baldosa.
+  return [tabs.filter(f=>getStatus(curMod,f)==="pending").length + (lab ? _previasAlgas() : _previasFichas(curMod)).length, "ficha(s)"];
+}
+function updateSyncUI(){
+  const r = _pendientesDelModulo();
+  _syncUIResumen(r[0], r[1]);
 }
 
 /* ══════════════════════════════════════════
@@ -8172,8 +8232,9 @@ function _madTqVaciadas(guardado, data){
 }
 // Persiste (silencioso, sin re-render) la grilla activa usando el contexto con que
 // se renderizó. Se llama ANTES de cambiar de sala/fecha o de pestaña.
+/* 2026-11-05 (pauta A7) · Devuelve false si había una grilla que guardar y no se pudo. Ver _madGridSePuedeDejar. */
 function _madCommitActive(){
-  if(!isMadMod(curMod)) return;
+  if(!isMadMod(curMod)) return true;
   /* 2026-09-15 · el borrador por fecha de las fichas de formulario se guarda en el MISMO
      momento que las grillas —cambiar de pestaña, volver atrás—, que es cuando se sabe que el
      usuario ha terminado de teclear. Va antes del `return` de abajo porque esas fichas no
@@ -8182,17 +8243,28 @@ function _madCommitActive(){
   if(MAD_BORR_FICHAS[curTab]){
     try{ madBorrGuardarYa(curTab); }catch(_){}
   }
-  if(!MAD_FICHAS.includes(curTab)) return;
-  const r = _madRendered[curTab]; if(!r) return;
+  if(!MAD_FICHAS.includes(curTab)) return true;
+  const r = _madRendered[curTab]; if(!r) return true;
   try{
     /* ⚠ La rama de caída (`else`) desapareció con la grilla de Lotes el 2026-09-08. Era
        un catch-all: CUALQUIER ficha que no fuera salas ni tanques acababa guardándose como
        si fuera Lotes. Con dos fichas es inalcanzable, pero un `else` que significa «la
        tercera» envejece mal — si mañana entra una cuarta, se guardaría en la equivocada
        sin dar síntoma. Ahora cada ficha se nombra. */
-    if(curTab==="salas")        saveMadSalasGrid({ fechaOverride:r.fecha, silent:true, noRender:true });
-    else if(curTab==="tanques") saveMadTanquesGrid({ salaOverride:r.sala, fechaOverride:r.fecha, silent:true, noRender:true });
+    if(curTab==="salas")        return saveMadSalasGrid({ fechaOverride:r.fecha, silent:true, noRender:true }) !== -1;
+    else if(curTab==="tanques") return saveMadTanquesGrid({ salaOverride:r.sala, fechaOverride:r.fecha, silent:true, noRender:true }) !== -1;
   }catch(_){}
+  return true;
+}
+/* 2026-11-05 (pauta A7, usuario: «Preguntar») · ANTES DE DEJAR UNA GRILLA. Sin espacio, cambiar de sala, de fecha o de pestaña, o salir del
+   módulo, repintaba y borraba lo tecleado sin remedio, mientras el aviso decía «sigue en pantalla». Ahora se pregunta. Con espacio, o sin nada
+   tecleado, ni se pregunta. Devuelve true para seguir. */
+const MAD_GRID_SIN_ESPACIO = "⚠ No hay espacio en este equipo para guardar lo tecleado en esta grilla.\n\nAceptar = seguir y PERDERLO."
+  + "\nCancelar = quedarte aquí, con lo tecleado. En Tanques, ☁️ lo envía sin guardarlo; en Salas hay que liberar espacio en ⚙ Config o anotarlo.";
+function _madGridSePuedeDejar(){
+  const tecleado = _madGridDirty;
+  if(_madCommitActive() || !tecleado) return true;
+  return confirm(MAD_GRID_SIN_ESPACIO);
 }
 // Autoguardado de recuperación (espejo de Biomol): la grilla activa cada 60s y en goBack.
 function saveMadRecovery(){
@@ -8209,7 +8281,7 @@ function saveMadRecovery(){
   const fecha = (fechaEl && isValidDate(fechaEl.value)) ? fechaEl.value : today();
   const rec = { ficha, sala, fecha, ts:Date.now(), rows };
   if(zonas.length) rec.zonas = zonas;
-  _lsSet(MAD_RECOV_KEY, JSON.stringify(rec));
+  return _lsSet(MAD_RECOV_KEY, JSON.stringify(rec));
 }
 function loadMadRecovery(){
   try{
@@ -11339,6 +11411,8 @@ function _madLocAnotar(ficha, payload, fecha, info){
     toast("💾 Ya hay "+list.length+" envíos de esta ficha guardados sin enviar: envíalos con ☁️ o descarta alguno antes de guardar más.","err",7000);
     return false;
   }
+  // 2026-11-05 (pauta A12) · Aquí, y no al enviar: lo guardado con 💾 sale después sin ficha en pantalla, y nadie más lo preguntaría.
+  if(!_madHistCorrConfirma(ficha, payload)) return false;
   list.push({ id:_madLogEnvioId(), ts:Date.now(), fecha:sanitizeStr(fecha,10), filas:payload.rows.length, payload:payload, huella:huella, info:info||{} });
   if(!madLocGuardar(ficha, list)){
     toast("❌ Este navegador NO está guardando los datos (almacenamiento lleno, en modo privado o bloqueado). Usa ☁️ Guardar y sincronizar para no perderlos.","err",7000);
@@ -11566,10 +11640,25 @@ const MAD_HIST_EDITABLES = { alimentacion:3 };   // las demás, 10
 function _madHistEditables(f){ return MAD_HIST_EDITABLES[f] || 10; }
 function _madHistNombre(f){ const t=TAB_META[f]; return t ? t[0]+" "+t[1] : f; }
 function _madHistPanelKey(id){ return MAD_HIST_PANEL_PRE + id; }
+/* 2026-11-05 (pauta A8) · Lo que sigue en la cola no sale del Historial, por viejo que sea: es desde donde se ve, y se corrige. */
+function _madHistEnCola(){
+  const s=new Set();
+  _loadSyncQueue().forEach(function(it){
+    const m=it && it.mark;
+    if(m && typeof m.kind==="string" && m.kind.indexOf("madlog:")===0 && Array.isArray(m.keys)) m.keys.forEach(function(k){ s.add(String(k)); });
+  });
+  return s;
+}
 function madHistLeer(){
   let l=[]; try{ const v=JSON.parse(localStorage.getItem(MAD_HIST_KEY)||"[]"); if(Array.isArray(v)) l=v; }catch(_){}
   const ahora=Date.now();
-  return l.filter(function(e){ return e && e.id && MAD_HIST_FICHAS.indexOf(e.ficha)!==-1 && (ahora-(e.ts||0)) < MAD_HIST_TTL; });
+  let enCola=null;
+  return l.filter(function(e){
+    if(!e || !e.id || MAD_HIST_FICHAS.indexOf(e.ficha)===-1) return false;
+    if((ahora-(e.ts||0)) < MAD_HIST_TTL) return true;
+    if(!enCola) enCola=_madHistEnCola();
+    return enCola.has(String(e.envio));
+  });
 }
 /* Libera TODAS las copias para Editar (primera estrategia de safeSetItem y de _reclaimSpace): el historial sigue, sin Editar. */
 function _purgeMadHistPaneles(){
@@ -11713,7 +11802,7 @@ function _madHistDesoveCorregido(fecha, desove){
     _madHistGuardar(l);
   }catch(_){}
 }
-/* Antes de ☁️ en una corrección: si alguna fila del envío original ya no sale (cambió su llave), se escribiría otra NUEVA y
+/* Antes de ☁️ o 💾 en una corrección: si alguna fila del envío original ya no sale (cambió su llave), se escribiría otra NUEVA y
    la vieja seguiría en la hoja. Se dice y se pregunta. Sin corrección abierta, o sin columna ID, no pregunta nada. */
 function _madHistCorrConfirma(ficha, payload){
   const b=_madHistCorrActiva(ficha); if(!b) return true;
@@ -11816,13 +11905,14 @@ function madHistPdf(id){
 /* Salas y Tanques: de sus propios registros del equipo, los enviados dentro del plazo (MAD_HIST_TTL). Salas, una línea por fecha
    (su grilla es la de todas las salas); Tanques, por fecha y sala. */
 function _madHistGrillas(){
-  const out=[], lim=new Date(Date.now()-MAD_HIST_TTL), desde=lim.getFullYear()+"-"+pad(lim.getMonth()+1)+"-"+pad(lim.getDate());
+  const out=[], limMs=Date.now()-MAD_HIST_TTL, lim=new Date(limMs), desde=lim.getFullYear()+"-"+pad(lim.getMonth()+1)+"-"+pad(lim.getDate());
   ["salas","tanques"].forEach(function(f){
     const g={};
     // 2026-10-27 · las zonas cuentan en el día de 🏠 Salas: se editan y se imprimen desde su grilla.
     (f==="salas" ? loadMad(f).concat(loadMad("zonas")) : loadMad(f)).forEach(function(r){
       if(!r || !(r.synced || r.syncedAt) || !r.data) return;
-      const fecha=sanitizeStr(r.data.fecha,10); if(!isValidDate(fecha) || fecha < desde) return;
+      // 2026-11-05 (pauta A8) · La misma regla que la poda (_madSinCaducados): un día viejo enviado hace poco sigue en el equipo, y se lista.
+      const fecha=sanitizeStr(r.data.fecha,10); if(!isValidDate(fecha) || (fecha < desde && (r.syncedAt||0) < limMs)) return;
       const sala=f==="tanques" ? String(r.data.sala||"") : "";
       const k=fecha+"|"+sala;
       if(!g[k]) g[k]={ ficha:f, fecha:fecha, sala:sala, n:0, ts:0 };
@@ -15213,7 +15303,7 @@ function renderMadMortDesove(){
     + '<div class="fc-h"><div class="fc-t">📋 Maduración · Inf. Supervisor</div><span class="ssp ssp-mt">'+escapeHtml(todayStr)+'</span></div>'
     + '<div class="fc-b">'
     +   '<div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:8px;padding:7px 12px;margin-bottom:10px;font-size:11px;color:#1e40af;display:flex;align-items:flex-start;gap:8px">'
-    +     '<span style="font-size:16px">ℹ️</span><span>Por <b>lote</b>. <b>📉 Mortalidad de hembras:</b> cuántas entran a los tanques de <b>desove</b> y de <b>recuperación</b> y cuántas mueren; el % se calcula solo y las muertas <b>se descuentan del saldo</b> del lote. <b>🔬 Revisión de nauplios:</b> Deformidad, Actividad, Hongos, Salinidad y Temperatura en cada revisión (Entrada, Lavado, Lavado 2 y Postlavado); rellena sólo las revisiones hechas.</span>'
+    +     '<span style="font-size:16px">ℹ️</span><span>Por <b>lote</b>. <b>📉 Mortalidad de hembras:</b> cuántas entran a los tanques de <b>desove</b> y de <b>recuperación</b> y cuántas mueren; el % se calcula solo y las muertas <b>se descuentan del saldo</b> del lote. <b>🔬 Revisión de nauplios:</b> Deformidad, Actividad, Hongos, Salinidad y Temperatura en cada revisión (Entrada, Lavado, Lavado 2 y Postlavado): lo elegido en Entrada se copia a las demás, así que <b>vacía las revisiones que no se hayan hecho</b>.</span>'
     +   '</div>'
     +   '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'
     +     '<label style="'+_MAD_ING_LBL+'">📅 Fecha<input type="date" id="mm-fecha" value="'+escapeHtml(todayStr)+'" onchange="madBorrFechaChange(&quot;mortdes&quot;)" style="'+_MAD_ING_INP+'"></label>'
@@ -18437,12 +18527,12 @@ function saveMadSalasGrid(opts){
   // Carga la lista UNA vez, mergea en memoria y persiste UNA vez (O(n)).
   let saved = 0, zSaved = 0, _ok = true;
   if(rows.length){
-    const list = loadMad("salas");
+    const list = _madSinIds(loadMad("salas"), opts.quitar);   // opts.quitar: lo que se lleva de otra fecha (_madGridLlevar)
     rows.forEach(data => { if(!isValidDate(data.fecha)) return; _madMergeRow(list, "salas", data); saved++; });
     _ok = saveMadList("salas", list);
   }
   if(zRows.length){
-    const zl = loadMad("zonas");
+    const zl = _madSinIds(loadMad("zonas"), opts.quitarZonas);
     zRows.forEach(data => { if(!isValidDate(data.fecha)) return; _madMergeRow(zl, "zonas", data); zSaved++; });
     _ok = saveMadList("zonas", zl) && _ok;
   }
@@ -18906,6 +18996,7 @@ function renderMadTanques(){
     </div>
     <div class="fc-b">
       <div class="meta" style="margin-bottom:8px">${salaSel}${fechaInp}</div>
+      ${_madTqDiaQuitado(list, fecha, sala) ? '<div id="mad-tanques-quitado" style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:8px;padding:7px 12px;margin-bottom:10px;font-size:11px;color:#92400e">⚠️ Lo enviado de este día ya no está en este equipo (se quita a los 7 días), y no se sabe qué partes tiene. Si esa ronda ya se registró, teclearla crea otra fila y el libro resta dos veces: corrígela en la hoja.</div>' : ''}
       <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:7px 12px;margin-bottom:10px;font-size:11px;color:#065f46;display:flex;align-items:center;gap:8px">
         <span style="font-size:16px">ℹ️</span>
         <span>Completa lo de ESTA ronda por tanque, no el acumulado del día. Al guardar (💾 o ☁️) el parte se cierra con su hora y la grilla queda limpia para la ronda siguiente. Puedes pegar bloques desde Excel.</span>
@@ -19313,8 +19404,9 @@ function madTqPesoBaja(el){
 }
 
 function madTanquesSalaChange(){
-  _madCommitActive();   // persiste la grilla de la sala ANTERIOR antes de cambiar
   const el = document.getElementById("mad-tanques-sala");
+  // Persiste la grilla de la sala ANTERIOR antes de cambiar; si no puede y se decide quedarse, el selector vuelve a ella.
+  if(!_madGridSePuedeDejar()){ if(el) el.value = _madTanquesSala; return; }
   _madTanquesSala = el ? el.value : "";
   renderMadTanques();
 }
@@ -19325,9 +19417,15 @@ function madTanquesFechaChange(){ _madGridFechaChange("tanques", renderMadTanque
 function _madGridFechaChange(ficha, pintar){
   // 2026-09-30 · una fecha ELEGIDA deja de ser la de la app (se respeta al día siguiente); elegir hoy la deja automática.
   const _el = document.getElementById("mad-" + ficha + "-fecha");
+  const _autoAntes = _madGridFechaAuto[ficha];
   _madGridFechaAuto[ficha] = (_el && _el.value === today()) ? today() : null;
   const llevado = _madGridLlevar(ficha);
-  if(!llevado) _madCommitActive();
+  // Si no se pudo guardar y se decide quedarse, la fecha vuelve a la que está pintada (pauta A7).
+  if(!llevado && !_madGridSePuedeDejar()){
+    _madGridFechaAuto[ficha] = _autoAntes;
+    if(_el && _madRendered[ficha]) _el.value = _madRendered[ficha].fecha;
+    return;
+  }
   pintar();
   /* Lo llevado sigue siendo lo que se tecleó: si la fecha elegida también era otra, se vuelve a llevar, igual que en
      las fichas de formulario. El render lo daría por «ya guardado y sin tocar». */
@@ -19342,6 +19440,7 @@ function _madGridFechaChange(ficha, pintar){
  *  🔴 2026-09-25 (usuario, revisión en Chrome de 0d) · «enviado» es haber llegado ALGUNA VEZ a la hoja (`syncedAt`), no
  *  `synced`: la fusión al guardar la grilla (salir de la pestaña, elegir el mismo día) le quita `synced` aunque nada
  *  cambie, y tras salir y volver una fila enviada se movía de día. */
+function _madSinIds(lista, ids){ return ids && ids.size ? lista.filter(function(x){ return !(x && ids.has(x.id)); }) : lista; }
 function _madGridLlevar(ficha){
   const r = _madRendered[ficha];
   const el = document.getElementById("mad-" + ficha + "-fecha");
@@ -19356,6 +19455,13 @@ function _madGridLlevar(ficha){
     toast("Lo del " + r.fecha + " ya se envió a la hoja: se queda en ese día (corrígelo en la hoja si la fecha era otra).", "warn", 7000);
     return null;
   }
+  /* 2026-11-05 (pauta A12, usuario: «No mover») · Lo que espera en la cola sale con su fecha: llevarlo a otra dejaba filas en los dos días, y en
+     Tanques las muertas contarían dos veces. Sacarlo de la cola no es seguro: pudo llegar ya sin confirmarse, y un envío lleva también otras filas. */
+  const _enCola = function(f, filas){ return _colaSolapa({ kind:"mad:" + f, keys:filas.map(function(x){ return x.id; }) }); };
+  if(_enCola(ficha, deOrigen) || _enCola("zonas", zOrigen)){
+    toast("Lo del " + r.fecha + " ya está en la cola de envío: se queda en ese día (cuando llegue, corrígelo en la hoja si la fecha era otra).", "warn", 7000);
+    return null;
+  }
   const nuevo = !r.conDatos, hayEnDestino = list.some(_madGridDelDia(ficha, nueva, r.sala)) || zl.some(_madZonasDelDia(nueva));
   const llevar = (nuevo && !hayEnDestino) || confirm(hayEnDestino
     ? "El " + nueva + " ya tiene " + (ficha === "salas" ? "datos de Salas" : "un parte abierto de " + r.sala) + " en este dispositivo.\n\nAceptar: llevar lo de pantalla al " + nueva
@@ -19365,10 +19471,22 @@ function _madGridLlevar(ficha){
   if(!llevar) return null;
   // La hora del parte que se deja, antes de quitarlo: la ronda la conserva (Tanques).
   const hora = ficha === "tanques" ? _madParteHora(list, r.fecha, r.sala, _madParteAbierto(list, r.fecha, r.sala)) : "";
-  if(deOrigen.length && !saveMadList(ficha, list.filter(function(x){ return deOrigen.indexOf(x) === -1; }))) return null;
-  if(zOrigen.length && !saveMadList("zonas", zl.filter(function(x){ return zOrigen.indexOf(x) === -1; }))) return null;
-  if(ficha === "salas") saveMadSalasGrid({ fechaOverride: nueva, silent: true, noRender: true });
-  else saveMadTanquesGrid({ salaOverride: r.sala, fechaOverride: nueva, horaOverride: hora, silent: true, noRender: true });
+  /* 2026-11-05 (pauta A7) · De una sola escritura: salir de la fecha vieja y entrar en la nueva. Se borraba primero, y sin sitio para escribir
+     se perdía también lo ya guardado; ni devolverlo era seguro, porque en ese hueco otra escritura podía ocupar lo liberado. Salas escribe dos
+     listas: si la segunda falla, las dos vuelven como estaban. */
+  const _fuera = new Set(deOrigen.map(function(x){ return x.id; })), _fueraZ = new Set(zOrigen.map(function(x){ return x.id; }));
+  const _g = ficha === "salas" ? saveMadSalasGrid({ fechaOverride: nueva, silent: true, noRender: true, quitar: _fuera, quitarZonas: _fueraZ })
+    : saveMadTanquesGrid({ salaOverride: r.sala, fechaOverride: nueva, horaOverride: hora, silent: true, noRender: true, quitar: _fuera });
+  if(_g === -1){
+    if(ficha === "salas"){ saveMadList("salas", list); saveMadList("zonas", zl); }
+    return null;
+  }
+  // Sin nada que escribir (la grilla, vacía) esa escritura no ocurrió: lo de la fecha vieja sale igual, como siempre. Más corta, siempre cabe.
+  [[ficha, _fuera], ["zonas", _fueraZ]].forEach(function(p){
+    if(!p[1].size) return;
+    const l = loadMad(p[0]), q = _madSinIds(l, p[1]);
+    if(q.length !== l.length) saveMadList(p[0], q);
+  });
   return { nuevo: nuevo };
 }
 function madGridPaste(ev, ficha){
@@ -19543,6 +19661,15 @@ function _collectTanquesGrid(salaOverride, fechaOverride){
      · un auto-guardado actualiza el parte ABIERTO, nunca abre otro.
    Vaciar la grilla al cerrar no es estética: es lo que impide que la ronda siguiente se escriba sobre la
    anterior. Lo guardado no se pierde — está en el registro local y en «Registrado desde este dispositivo». */
+/* 2026-11-05 (pauta A8, usuario: «Avisar y preguntar») · ¿ESTE DÍA YA NO ESTÁ EN EL EQUIPO? Lo enviado se quita a los 7 días, y entonces el número de
+   parte vuelve a 1 con otra hora: otra llave en la hoja, otra fila, y el libro resta dos veces. Numerar según la hoja no se puede: el parte se
+   asigna al guardar, muchas veces sin señal. Lo autoguardado no cuenta como saber de ese día: sólo lo enviado o lo cerrado. */
+function _madTqDiaQuitado(list, fecha, sala){
+  if(!isValidDate(fecha) || !sala) return false;
+  const lim=new Date(Date.now()-MAD_RETENCION_MS), desde=lim.getFullYear()+"-"+pad(lim.getMonth()+1)+"-"+pad(lim.getDate());
+  if(fecha >= desde) return false;
+  return !(list || []).some(function(r){ return r && r.data && r.data.fecha===fecha && r.data.sala===sala && (r.synced || r.syncedAt || r.data.cerrado); });
+}
 function _madParteSiguiente(list, fecha, sala){
   let max = 0;
   (list || []).forEach(function(r){
@@ -19675,12 +19802,15 @@ function saveMadTanquesGrid(opts){
   const rows = _collectTanquesGrid(opts.salaOverride, opts.fechaOverride);
   const vaciar = _madTqVaciadosEnteros(rows, sala, opts.fechaOverride);   // 2026-09-30 (noche, punto 5 · A) · ver abajo
   if(rows.length === 0){ if(!silent) toast("No hay datos para guardar","warn"); return 0; }
-  const list = loadMad("tanques");
+  const list = _madSinIds(loadMad("tanques"), opts.quitar);   // opts.quitar: lo que se lleva de otra fecha (_madGridLlevar)
   /* `silent` es el auto-guardado: actualiza el parte abierto. Un guardado explícito abre el siguiente.
      Si no hay ninguno abierto todavía, el auto-guardado abre el primero: lo tecleado no puede quedarse
      sin fila por el hecho de que el usuario navegara antes de pulsar 💾. */
   const explicito = !silent;
   const fechaDeLaRonda = rows[0] && rows[0].fecha;
+  if(explicito && _madTqDiaQuitado(list, fechaDeLaRonda, sala) && !confirm("⚠ Los partes del " + fechaDeLaRonda + " en " + sala + " ya no están en este equipo (lo enviado se quita a los 7 días)."
+    + " Si esta ronda ya se registró, guardarla crea OTRA fila y el libro resta dos veces: corrígela en la hoja."
+    + "\n\nAceptar = es una ronda nueva: guardarla.\nCancelar = no guardar; lo tecleado sigue en pantalla.")){ opts.cancelado = true; return 0; }
   const abiertoPrevio = _madParteAbierto(list, fechaDeLaRonda, sala);
   const parte = abiertoPrevio || _madParteSiguiente(list, fechaDeLaRonda, sala);
   /* R2 (2026-09-17) · LA HORA ES LA DE CUANDO SE ABRIÓ EL PARTE, y ya no se toca. Entra en la llave del GAS
@@ -19844,6 +19974,7 @@ async function _syncMadTanquesGrid(){
      llegó: la grilla sale de lo guardado, y borraría de la pantalla lo único que hay. */
   const _g = {};
   const sinCopia = saveMadTanquesGrid(_g) === -1 ? _g.lista : null;
+  if(_g.cancelado) return;   // pauta A8: el día ya no está en el equipo, y no quiso guardarla
   const url = gasUrl();
   if(!url){ toast("Configura la URL de Google Apps Script","warn"); openCfg(); return; }
   if(!isValidGasUrl(url)){ toast("URL inválida","err"); return; }
@@ -20826,14 +20957,26 @@ async function syncAllPendingBio(){
   const fecha  = bioGridFecha();
   const activo = bioSidActivo(fecha);
   const tienePend = (sid) => _bioRaw().some(r => r && r.data && r.data.sid === sid && !r.synced);
-  const otros = bioSesDelDia(fecha).filter(s => s.sid !== activo && tienePend(s.sid));
+  /* 2026-11-05 (pauta A12, usuario: «Enviar todo») · También los de OTROS días, de la fecha más vieja a la más nueva: el punto naranja los
+     cuenta, y 🔄 sólo recorría la fecha de la grilla, así que no había forma de apagarlo desde aquí. */
+  const _ses = _bioSesAll();
+  const otros = Object.keys(_ses)
+    .filter(sid => sid !== activo && _ses[sid] && isValidDate(_ses[sid].fecha) && tienePend(sid))
+    .map(sid => Object.assign({ sid }, _ses[sid]))
+    .sort((a, b) => a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : (a.creado||0) - (b.creado||0));
+  const _ponDia = (d) => { const el = document.getElementById("bio-grid-fecha"); if(el) el.value = d; };   // pintar la grilla crea otro campo
   if(otros.length){
-    // Lo tecleado en la grilla de pantalla se persiste UNA vez, antes de irse a los demás.
-    try{ saveBioGrid({ fecha, sid:activo, silent:true, noRender:true }); }catch(_){}
+    // Lo tecleado en la grilla de pantalla se persiste UNA vez, antes de irse a los demás. Si no cabe, no se va: repintar lo borraría.
+    let _g = 0;
+    try{ _g = saveBioGrid({ fecha, sid:activo, silent:true, noRender:true }); }catch(_){}
+    if(_g === -1) return;
     for(const s of otros){
+      if(!tienePend(s.sid)) continue;       // migrar un día heredado se lleva a todos los de esa fecha
+      _ponDia(s.fecha);
       _bioSid = s.sid; renderBiomol();
       await syncBioGrid({ rotar:false });   // sin abrir grillas nuevas por el camino
     }
+    _ponDia(fecha);
     /* Se vuelve al de pantalla SIN volver a guardar. `saveBioGrid` crea siempre los
        registros con synced:false —guardar significa "hay datos nuevos"—, así que pasar
        por él aquí re-marcaría como PENDIENTE justo lo que se acaba de sincronizar, y el
@@ -23007,6 +23150,9 @@ function loadScore(){
 /* ── La evaluación en pantalla ──────────────────────────── */
 let _scoreModel = null;   // se guarda al instante en SCORE_DRAFT_KEY
 let _scoreTq = 1;         // el tanque en pantalla
+/* A9 · El id de la evaluación guardada que continúa la de la pantalla (abierta con ✏️ o ya guardada): seguir con ella no
+   pregunta. En memoria a propósito: recargada la página se olvida, y entonces sólo se pregunta si algo se pierde o cambia. */
+let _scoreOrigen = null;
 function _scoreUltimos(){ try{ return JSON.parse(localStorage.getItem(SCORE_ULT_KEY) || "{}") || {}; }catch(_){ return {}; } }
 function _scoreNuevo(){
   const u = _scoreUltimos();
@@ -23114,16 +23260,49 @@ function downloadScorePDF(){
   try{ w.document.title = fileName; }catch(_){}
   toast('📄 PDF: ' + fileName + ' · ' + tqs.length + ' tanque(s)', 'ok', 5000);
 }
+/* A9 · La pregunta de una ficha que cae sobre otra guardada con su misma llave; "" si no hay que preguntar: lo ya enviado
+   que aquí falta sigue en la hoja, y lo que no cambia no se pisa. `pisa` = { faltan, cambian }, ya en palabras. */
+function _preguntaPorLlave(cual, previa, pisa){
+  const lista = function(l){
+    const u = l.filter(function(x, i){ return l.indexOf(x) === i; });
+    return u.slice(0, 8).join(", ") + (u.length > 8 ? " y " + (u.length - 8) + " más" : "");
+  };
+  const lineas = [];
+  if(pisa.faltan.length && !previa.synced) lineas.push("Se perdería, sin llegar a la hoja: " + lista(pisa.faltan) + ".");
+  if(pisa.cambian.length) lineas.push((previa.synced ? "Se corregiría en la hoja: " : "Se sustituiría: ") + lista(pisa.cambian) + ".");
+  if(!lineas.length) return "";
+  return "Ya hay " + cual + " guardada en este dispositivo (" + (previa.synced ? "ya enviada" : "pendiente de enviar") + ").\n\n"
+    + lineas.join("\n") + "\n\n¿Reemplazarla igualmente?";
+}
+/* A9 · Los tanques evaluados en la guardada que aquí faltan o dicen otra cosa, sin contar el orden en que se marcaron. */
+function _scoreLoQuePisa(previa, m){
+  const a = (previa && previa.tanques) || {}, b = (m && m.tanques) || {}, faltan = [], cambian = [];
+  const huella = function(t){
+    return JSON.stringify(Object.keys(t).sort().map(function(k){ return [k, String(t[k] == null ? "" : t[k]).trim()]; })
+      .filter(function(par){ return par[1] !== ""; }));
+  };
+  for(let n = 1; n <= SCORE_TANQUES; n++){
+    if(scoreEstado(a[n]) === "vacio") continue;
+    if(scoreEstado(b[n]) === "vacio") faltan.push("TQ " + n);
+    else if(huella(a[n]) !== huella(b[n])) cambian.push("TQ " + n);
+  }
+  return { faltan: faltan, cambian: cambian };
+}
 // Valida y guarda la evaluación en el dispositivo como PENDIENTE (la misma fecha·módulo·corrida la sustituye).
 function _scoreRegistrar(){
   const m = _scoreActual();
   const err = scoreValidar(m);
   if(err.length){ toast("⚠ " + err.join(" · "), "warn", 8000); return null; }
   const id = _scoreEvalId(m);
+  // A9 · Otra evaluación con esta llave: lo suyo no se pisa sin preguntar. Seguir con la misma no pregunta.
+  const previa = _scoreOrigen === id ? null : _scoreRaw().find(function(r){ return r && r.id === id; });
+  const pregunta = previa ? _preguntaPorLlave("una evaluación de esta fecha, módulo y corrida", previa, _scoreLoQuePisa(previa.data, m)) : "";
+  if(pregunta && !confirm(pregunta)) return null;
   const list = _scoreRaw().filter(function(r){ return r && r.id !== id; });
   const rec = { id: id, ts: Date.now(), synced: false, data: JSON.parse(JSON.stringify(m)) };
   list.push(rec);
   if(!_scoreSave(list)) return null;
+  _scoreOrigen = id;
   _lsSet(SCORE_ULT_KEY, JSON.stringify({ laboratorio: m.laboratorio || "", realizado: m.realizado || "", revisado: m.revisado || "" }));
   return rec;
 }
@@ -23139,12 +23318,17 @@ async function scoreEnviar(){
   renderScore(); updateDots();
   await syncAllPendingScore();
 }
-function scoreNueva(){
+// A9 · ¿Hay en pantalla algo evaluado que no está guardado? «Nueva evaluación» y ✏️ Abrir lo miran con la misma vara.
+function _scoreSinGuardar(){
   const m = _scoreActual();
   const hay = Object.keys(m.tanques || {}).some(function(n){ return scoreEstado(m.tanques[n]) !== "vacio"; });
   const guardada = _scoreRaw().some(function(r){ return r && r.id === _scoreEvalId(m) && JSON.stringify(r.data) === JSON.stringify(m); });
-  if(hay && !guardada && !confirm("Lo marcado en esta evaluación NO se ha guardado.\n\n¿Empezar otra igualmente?")) return;
+  return hay && !guardada;
+}
+function scoreNueva(){
+  if(_scoreSinGuardar() && !confirm("Lo marcado en esta evaluación NO se ha guardado.\n\n¿Empezar otra igualmente?")) return;
   _scoreModel = _scoreNuevo();
+  _scoreOrigen = null;
   _scoreTq = 1;
   _scoreGuardarBorrador();
   renderScore();
@@ -23152,7 +23336,9 @@ function scoreNueva(){
 function scoreAbrir(id){
   const r = _scoreRaw().find(function(x){ return x && x.id === id; });
   if(!r) return;
+  if(_scoreSinGuardar() && !confirm("Lo marcado en esta evaluación NO se ha guardado: se perderá.\n\n¿Abrir la guardada igualmente?")) return;
   _scoreModel = JSON.parse(JSON.stringify(r.data));
+  _scoreOrigen = r.id;
   _scoreTq = 1;
   _scoreGuardarBorrador();
   renderScore();
@@ -23759,18 +23945,23 @@ async function mntTrabEnviar(){
 function _mntSinGuardar(key, m){
   return !_mntRaw(key).some(function(r){ return r && r.id === m.id && JSON.stringify(r.data) === JSON.stringify(m); });
 }
-function mntRondaNueva(){
+// A9 · ¿Hay en pantalla algo anotado que no está guardado? «Nueva» y ✏️ Abrir lo miran con la misma vara.
+function _mntRondaPorGuardar(){
   const m = _mntRondaActual();
-  const hay = MNT_EQUIPOS.some(function(q){ return !mntLecturaVacia(m.equipos[q.codigo]); });
-  if(hay && _mntSinGuardar(MNT_RONDA_KEY, m) && !confirm("Lo anotado en esta ronda NO se ha guardado.\n\n¿Empezar otra igualmente?")) return;
+  return MNT_EQUIPOS.some(function(q){ return !mntLecturaVacia(m.equipos[q.codigo]); }) && _mntSinGuardar(MNT_RONDA_KEY, m);
+}
+function _mntTrabPorGuardar(){
+  const m = _mntTrabActual();
+  return !!(m.equipo || m.tipo || m.actividad || String(m.horometro || "").trim() || String(m.descripcion || "").trim()) && _mntSinGuardar(MNT_TRAB_KEY, m);
+}
+function mntRondaNueva(){
+  if(_mntRondaPorGuardar() && !confirm("Lo anotado en esta ronda NO se ha guardado.\n\n¿Empezar otra igualmente?")) return;
   _mntRonda = _mntRondaNueva();
   _mntGuardarRonda();
   renderMntRonda();
 }
 function mntTrabNuevo(){
-  const m = _mntTrabActual();
-  const hay = !!(m.equipo || m.tipo || m.actividad || String(m.horometro || "").trim() || String(m.descripcion || "").trim());
-  if(hay && _mntSinGuardar(MNT_TRAB_KEY, m) && !confirm("Este trabajo NO se ha guardado.\n\n¿Empezar otro igualmente?")) return;
+  if(_mntTrabPorGuardar() && !confirm("Este trabajo NO se ha guardado.\n\n¿Empezar otro igualmente?")) return;
   _mntTrab = _mntTrabNuevo();
   _mntGuardarTrab();
   renderMntTrabajo();
@@ -23778,6 +23969,8 @@ function mntTrabNuevo(){
 function _mntAbrir(ronda, id){
   const r = (ronda ? _mntRondaRaw() : _mntTrabRaw()).find(function(x){ return x && x.id === id; });
   if(!r) return;
+  if(ronda && _mntRondaPorGuardar() && !confirm("Lo anotado en esta ronda NO se ha guardado: se perderá.\n\n¿Abrir la guardada igualmente?")) return;
+  if(!ronda && _mntTrabPorGuardar() && !confirm("Este trabajo NO se ha guardado: se perderá.\n\n¿Abrir el guardado igualmente?")) return;
   if(ronda){ _mntRonda = JSON.parse(JSON.stringify(r.data)); _mntGuardarRonda(); renderMntRonda(); }
   else { _mntTrab = JSON.parse(JSON.stringify(r.data)); _mntGuardarTrab(); renderMntTrabajo(); }
 }
@@ -24232,6 +24425,7 @@ function loadAud(){
 
 /* ── La auditoría en pantalla ───────────────────────────── */
 let _audModel = null;   // se guarda al instante en AUD_DRAFT_KEY
+let _audOrigen = null;  // A9 · el id de la guardada que continúa la de la pantalla, como `_scoreOrigen`
 function _audUltimos(){ try{ return JSON.parse(localStorage.getItem(AUD_ULT_KEY) || "{}") || {}; }catch(_){ return {}; } }
 function _audNueva(){
   return { corrida:"", modulo:"", registrado: _audUltimos().registrado || "", obs:"", siembras:[], transferencias:[], cosechas:[] };
@@ -24662,16 +24856,40 @@ function downloadAudPDF(){
   try{ w.document.title = fileName; }catch(_){}
   toast('📄 PDF: ' + fileName, 'ok', 5000);
 }
+/* A9 · Las filas de la guardada que aquí faltan o dicen otra cosa, por su ID de la hoja. Las observaciones y quien registra
+   son de la auditoría entera, no de la fila: cambiarlos no es cambiar las filas. */
+function _audLoQuePisa(previa, m){
+  const fuera = ["Observaciones", "Registrado por"].map(function(h){ return AUD_HEADERS.indexOf(h); }), iId = AUD_HEADERS.indexOf("ID");
+  const huellas = function(d){
+    const o = {};
+    audFilas(d).forEach(function(f){ o[f[iId]] = JSON.stringify(f.filter(function(_, i){ return fuera.indexOf(i) < 0; })); });
+    return o;
+  };
+  const antes = huellas(previa), ahora = huellas(m), faltan = [], cambian = [];
+  ["siembras","transferencias","cosechas"].forEach(function(tipo){
+    ((previa && previa[tipo]) || []).forEach(function(f){
+      const fila = audRowId(tipo, previa, f), que = AUD_TIPO[tipo] + " del TQ " + _audTq(f.tanque);
+      if(ahora[fila] === undefined) faltan.push(que);
+      else if(ahora[fila] !== antes[fila]) cambian.push(que);
+    });
+  });
+  return { faltan: faltan, cambian: cambian };
+}
 // Valida y guarda la auditoría en el dispositivo como PENDIENTE (la misma corrida · módulo la sustituye).
 function _audRegistrar(){
   const m = _audActual();
   const err = audValidar(m);
   if(err.length){ toast("⚠ " + err.join(" · "), "warn", 9000); return null; }
   const id = _audEvalId(m);
+  // A9 · Otra auditoría con esta llave: lo suyo no se pisa sin preguntar. Seguir con la misma no pregunta.
+  const previa = _audOrigen === id ? null : _audRaw().find(function(r){ return r && r.id === id; });
+  const pregunta = previa ? _preguntaPorLlave("una auditoría de esta corrida y módulo", previa, _audLoQuePisa(previa.data, m)) : "";
+  if(pregunta && !confirm(pregunta)) return null;
   const list = _audRaw().filter(function(r){ return r && r.id !== id; });
   const rec = { id: id, ts: Date.now(), synced: false, data: JSON.parse(JSON.stringify(m)) };
   list.push(rec);
   if(!_audSave(list)) return null;
+  _audOrigen = id;
   _lsSet(AUD_ULT_KEY, JSON.stringify({ registrado: m.registrado || "" }));
   return rec;
 }
@@ -24687,19 +24905,26 @@ async function audEnviar(){
   renderAud(); updateDots();
   await syncAllPendingAud();
 }
-function audNueva(){
+// A9 · ¿Hay en pantalla filas que no están guardadas? «Nueva auditoría» y ✏️ Abrir lo miran con la misma vara.
+function _audSinGuardar(){
   const m = _audActual();
   const hay = m.siembras.length || m.transferencias.length || m.cosechas.length;
   const guardada = _audRaw().some(function(r){ return r && r.id === _audEvalId(m) && JSON.stringify(r.data) === JSON.stringify(m); });
-  if(hay && !guardada && !confirm("Lo registrado en esta auditoría NO se ha guardado.\n\n¿Empezar otra igualmente?")) return;
+  return !!hay && !guardada;
+}
+function audNueva(){
+  if(_audSinGuardar() && !confirm("Lo registrado en esta auditoría NO se ha guardado.\n\n¿Empezar otra igualmente?")) return;
   _audModel = _audNueva();
+  _audOrigen = null;
   _audGuardarBorrador();
   renderAud();
 }
 function audAbrir(id){
   const r = _audRaw().find(function(x){ return x && x.id === id; });
   if(!r) return;
+  if(_audSinGuardar() && !confirm("Lo registrado en esta auditoría NO se ha guardado: se perderá.\n\n¿Abrir la guardada igualmente?")) return;
   _audModel = JSON.parse(JSON.stringify(r.data));
+  _audOrigen = r.id;
   _audGuardarBorrador();
   renderAud();
 }
@@ -32911,13 +33136,19 @@ function _espacioPintar(){
 function liberarEspacio(){
   const antes = _espacioMedir().total;
   const r = _madLimpiezaDeEspacio();
-  const copia = _soltarCopiaMatriz();
+  /* 2026-11-05 (pauta A20, usuario: «Preguntar») · La copia de la MATRIZ, sólo si se acepta: sin ella y sin red, el reproductivo no registra
+     traslados ni eventos, porque no sabe qué hembra es cada microchip. Lo antiguo ya salió, se conteste lo que se conteste. Cuando un guardado
+     no cabe, se sigue soltando sola (_lsSet). */
+  const tam = _espacioMedir().partes.matriz;
+  const copia = tam && confirm("¿Borrar también la copia de la MATRIZ? Ocupa el " + (_espacioPct(tam) || "menos de 1") + " % del espacio.\n\n"
+    + "Con red se vuelve a bajar sola. Sin red, hasta entonces, el reproductivo no podrá registrar traslados ni eventos.\n\n"
+    + "Aceptar: borrarla. Cancelar: dejarla.") ? _soltarCopiaMatriz() : null;
   const hecho = [];
   if(r.grillas) hecho.push(r.grillas + " registro(s) enviados de Salas, Tanques y Zonas");
   if(r.historial) hecho.push(r.historial + " envío(s) del Historial");
   if(copia) hecho.push(copia + " (se vuelve a bajar cuando haga falta)");
   _espacioPintar();
-  if(!hecho.length){ toast("🧹 No hay nada antiguo que liberar: lo que ocupa el espacio es reciente o aún no se envió.","info",5000); return; }
+  if(!hecho.length){ toast("🧹 No hay nada antiguo que liberar: lo que ocupa el espacio es reciente o aún no se envió" + (tam ? ", y la copia de la MATRIZ se queda." : "."),"info",5000); return; }
   toast("🧹 Liberado el " + Math.max(1, _espacioPct(antes - _espacioMedir().total)) + " % del espacio: " + hecho.join(" · ") + ".","ok",6000);
   try{ updateDots(); updateSyncUI(); }catch(_){}
 }
@@ -34411,7 +34642,7 @@ function exportBackup(){
     const bytes = json.length;
     if(bytes > 5 * 1024 * 1024){
       const mb = (bytes / (1024*1024)).toFixed(1);
-      if(!confirm("⚠ El backup pesa ~"+mb+" MB (incluye fotos/videos). ¿Descargar de todas formas?")) return;
+      if(!confirm("⚠ El backup pesa ~"+mb+" MB (incluye fotos/videos). ¿Descargar de todas formas?")) return false;
     }
     const blob = new Blob([json], {type: "application/json"});
     const url = URL.createObjectURL(blob);
@@ -34423,10 +34654,50 @@ function exportBackup(){
     document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url), 1500);
     toast("📥 Backup exportado: "+dump.count+" elemento(s)","ok",4000);
+    return true;
   }catch(err){
     console.error("[backup] export error:", err);
     toast("Error al generar backup","err",4000);
+    return false;
   }
+}
+
+/* A13 (2026-11-05, usuario: «Juntarlas») · La cola de un respaldo se suma a la de aquí: lo que espera en este dispositivo no
+   se pierde, y lo que ya espera (misma huella; sin huella, misma hora) no se repite. En orden de hora y con el tope de
+   siempre: cae lo más viejo. Contrapartida aceptada: de un respaldo viejo, un envío puede volver a salir y pisar una
+   corrección posterior en la hoja. */
+function _colaDelRespaldo(texto){
+  let deFuera = [];
+  try{ const a = JSON.parse(texto); if(Array.isArray(a)) deFuera = a; }catch(_){}
+  const aqui = _loadSyncQueue().filter(Boolean);
+  const ya = function(it){ return aqui.some(function(x){ return it.reqId ? x.reqId === it.reqId : _claveCola(x) === _claveCola(it); }); };
+  const junta = aqui.concat(deFuera.filter(function(it){ return it && !ya(it); })).sort(function(a, b){ return (a.ts || 0) - (b.ts || 0); });
+  const sobra = Math.max(0, junta.length - SYNCQ_MAX);
+  return { texto: JSON.stringify(junta.slice(sobra)), fuera: junta.slice(0, sobra) };
+}
+/* A13 · Todo o nada: null si algo no se pudo escribir, y entonces queda como estaba. Al deshacer se retira PRIMERO todo lo
+   escrito: así lo de antes cabe seguro, aunque alguna clave crezca al volver. */
+function _aplicarRespaldo(items, claves){
+  const antes = new Map();
+  let ok = 0, fail = 0, fuera = [];
+  try{
+    claves.forEach(function(k){
+      let v = items[k];
+      if(typeof v !== "string"){ fail++; return; }
+      if(k === SYNCQ_KEY){ const c = _colaDelRespaldo(v); v = c.texto; fuera = c.fuera; }
+      antes.set(k, localStorage.getItem(k));
+      localStorage.setItem(k, v);
+      // Y LEÍDA TRAS ESCRIBIR, como _lsSet: el modo privado de algunos navegadores acepta setItem sin guardar nada.
+      if(localStorage.getItem(k) !== v) throw new Error("no se guardó");
+      ok++;
+    });
+  }catch(_){
+    antes.forEach(function(_v, k){ try{ localStorage.removeItem(k); }catch(_e){} });
+    antes.forEach(function(v, k){ if(v !== null){ try{ localStorage.setItem(k, v); }catch(_e){} } });
+    return null;
+  }
+  try{ if(fuera.length) _colaAvisaDescartes(fuera, "la cola llegó a su tope de " + SYNCQ_MAX); }catch(_){}
+  return { ok: ok, fail: fail };
 }
 
 function importBackup(file){
@@ -34454,17 +34725,15 @@ function importBackup(file){
       toast("No hay claves válidas en el backup","warn"); return;
     }
     const tsLabel = dump.iso ? new Date(dump.iso).toLocaleString("es-EC") : "(sin fecha)";
-    if(!confirm("¿Importar "+allowedKeys.length+" elemento(s) del backup de "+tsLabel+"?\n\nSe SOBRESCRIBEN las claves locales con el mismo nombre. Las claves no incluidas en el backup se conservan.")) return;
-    let ok = 0, fail = 0;
-    allowedKeys.forEach(k => {
-      try{
-        const v = dump.items[k];
-        if(typeof v === "string"){ localStorage.setItem(k, v); ok++; }
-        else fail++;
-      }catch(_){ fail++; }
-    });
+    if(!confirm("¿Importar "+allowedKeys.length+" elemento(s) del backup de "+tsLabel+"?\n\nSe SOBRESCRIBEN las claves locales con el mismo nombre. Las claves no incluidas en el backup se conservan.\n\nAntes se descarga una copia de lo que hay ahora, para poder volver atrás. Los envíos en cola se juntan con los del respaldo.")) return;
+    // A13 · Con la cola enviando, su final escribiría encima de lo importado.
+    if(_flushingQueue){ toast("Hay un envío de la cola en curso: importa cuando termine.","warn",6000); return; }
+    // A13 (usuario: «Copia automática antes») · Lo pendiente creado después del respaldo se sobrescribe: sin copia no se toca nada.
+    if(!exportBackup()){ toast("No se importó nada: falta la copia de lo que hay ahora.","err",8000); return; }
+    const r = _aplicarRespaldo(dump.items, allowedKeys);
+    if(!r){ toast("No se importó nada: no cabe en este navegador. Todo queda como estaba.","err",8000); return; }
     try{ _invalidateFotosCache(); }catch(_){}
-    toast("📤 Importados "+ok+" elemento(s)"+(fail>0?" ("+fail+" fallaron)":"")+". Recarga la página para refrescar.","ok",6500);
+    toast("📤 Importados "+r.ok+" elemento(s)"+(r.fail>0?" ("+r.fail+" fallaron)":"")+". Recarga la página para refrescar.",r.fail>0?"warn":"ok",6500);
   };
   reader.readAsText(file);
 }
@@ -34504,27 +34773,17 @@ function _markFormDirty(){
 window.addEventListener("beforeunload", function(e){
   try{
     if(curMod === null || curMod === undefined) return;
-    let hasPending = false;
-    if(isMadMod(curMod)){
-      hasPending = _madGridDirty || MAD_FICHAS.some(f => loadMad(f).some(r => !r.synced));
-    } else if(isLabMod(curMod)){
-      hasPending = loadAlgHist().length > 0;
-    } else if(isBioMod(curMod)){
-      hasPending = _bioGridDirty || loadBio().some(r => !r.synced);
-    } else if(isAstMod(curMod)){
-      hasPending = _astFormDirty || loadAst().some(r => !r.synced)
-        || ((typeof loadScore === "function") && loadScore().some(r => !r.synced))   // 🎯 Score (2026-10-02)
-        || ((typeof loadAud === "function") && loadAud().some(r => !r.synced));     // 🧾 Auditoría (2026-10-03)
-    } else if(isMicMod(curMod)){
-      hasPending = loadMic().some(r => !r.synced) || (typeof _calRaw==="function" && _calRaw().some(r => !r.synced)) || (typeof _patRaw==="function" && _patRaw().some(r => !r.synced));
-    } else if(isMntMod(curMod)){
-      hasPending = mntPendientes() > 0;   // 🔧 Mantenimiento (2026-10-28)
-    } else {
-      // R3: advierte tanto por datos guardados-sin-sincronizar (pending) como
-      // por datos TECLEADOS pero aún no guardados (_formDirty). Antes esto
-      // último se perdía al cerrar la pestaña sin ningún aviso.
-      hasPending = _formDirty || FICHAS.some(f => getStatus(curMod, f) === "pending");
-    }
+    // A14 · Lo guardado sin enviar lo cuenta `_pendientesDelModulo`, el mismo de la cabecera: este aviso omitía Traslado,
+    // Desinfección, lo guardado con 💾 en Maduración y lo de días anteriores.
+    const _p = _pendientesDelModulo();
+    // R3: advierte tanto por datos guardados-sin-sincronizar (pending) como
+    // por datos TECLEADOS pero aún no guardados. Antes esto
+    // último se perdía al cerrar la pestaña sin ningún aviso.
+    const hasPending = _p[0] > 0
+      || (isMadMod(curMod) && _madGridDirty)
+      || (isBioMod(curMod) && _bioGridDirty)
+      || (isAstMod(curMod) && _astFormDirty)
+      || (isStdMod(curMod) && _formDirty);
     if(hasPending){
       e.preventDefault();
       e.returnValue = "";  // Chrome/Edge/Firefox necesitan este string
