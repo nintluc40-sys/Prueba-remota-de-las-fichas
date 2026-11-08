@@ -2242,6 +2242,16 @@ function _lsSet(key, valueStr){
     return false;
   }
 }
+/* Revisión de la B (2026-11-07) · UNA CLAVE QUE CAMBIÓ DE NOMBRE: lo que haya con el viejo pasa al nuevo, una vez, y el
+   viejo se borra. Si no cabe, el viejo se queda y quien lee lo sigue leyendo de allí; cuando el nuevo ya existe, lo
+   escribió quien partió de esa lectura, y el viejo sobra. */
+function _lsMudarClave(vieja, nueva){
+  try{
+    if(localStorage.getItem(nueva) !== null){ if(localStorage.getItem(vieja) !== null) localStorage.removeItem(vieja); return; }
+    const v = localStorage.getItem(vieja);
+    if(v !== null && _lsSet(nueva, v)) localStorage.removeItem(vieja);
+  }catch(_){}
+}
 
 function cleanup(){
   // FPRE/RPRE/ALGHIST_PRE/TQNAME_PRE/NPRE all start with PRE, so a single
@@ -4069,11 +4079,11 @@ async function syncAll(){
     if(getStatus(curMod,"desinfeccion")==="pending"){
       total++;
       toast("Enviando Desinfección…","info",2000);
-      const dxp = buildDesinfeccionPayload(curMod);
+      const dxp = buildDesinfeccionPayload(curMod), _mDx = curMod;   // el módulo de ESTE envío: al salir, curMod pasa a null
       if(dxp.rows.length > 0){
         const opts = { mark: _marcaFichas(curMod, ["desinfeccion"]) };
-        _dxAnotarEnviado(curMod, dxp);   // A10
         const sent = await postPayload(dxp, url, opts);
+        if(sent || opts.outcome === "queued") _dxAnotarEnviado(_mDx, dxp);   // A10 · sólo lo que llegó o quedó en la cola
         if(sent){
           _marcarEnviado(opts);
           ok++;
@@ -4222,8 +4232,8 @@ async function _previasEnviarFichas(m, url){
       const keys = [], stamps = {};
       g.items.forEach(function(x){ const k = m + "|" + x.ficha + "|" + x.dia; keys.push(k); stamps[k] = x.e.updatedAt; });
       const opts = { mark:{ kind:"fichas", keys:keys, stamps:stamps } };
-      if(g.items[0] && g.items[0].ficha === "desinfeccion") _dxAnotarEnviado(m, g.payload);   // A10
       const sent = await postPayload(g.payload, url, opts);
+      if(g.items[0] && g.items[0].ficha === "desinfeccion" && (sent || opts.outcome === "queued")) _dxAnotarEnviado(m, g.payload);   // A10
       if(sent){ _reconcileFichas(opts.mark); r.ok++; }   // la misma conciliación que una entrega de la cola
       else if(opts.outcome === "queued") r.cola++;
       else { r.malo = { outcome:opts.outcome, gasMessage:opts.gasMessage, nombre:g.nombre }; return r; }
@@ -4921,10 +4931,10 @@ async function syncOneFicha(fid){
     if(sent) _marcarEnviado(opts);
   } else if(fid === "desinfeccion"){
     // Desinfección → hoja propia "Registro_Desinfección" (formato tidy).
-    const dxp = buildDesinfeccionPayload(curMod);
+    const dxp = buildDesinfeccionPayload(curMod), _mDx = curMod;   // el módulo de ESTE envío: al salir, curMod pasa a null
     if(dxp.rows.length > 0){
-      _dxAnotarEnviado(curMod, dxp);   // A10
       sent = await postPayload(dxp, url, opts);
+      if(sent || opts.outcome === "queued") _dxAnotarEnviado(_mDx, dxp);   // A10 · sólo lo que llegó o quedó en la cola
     } else { hadRows = false; }
     if(sent) _marcarEnviado(opts);
   } else if(["calidad","plg","poblacion","calagua","despacho"].includes(fid)){
@@ -6573,13 +6583,18 @@ function dxFechaChange(v){
 /* A10 (2026-11-06, usuario: «Sin tocar el Apps Script») · LO QUE YA SE MANDÓ DE CADA DÍA. La hoja se escribe por llave
    (Fecha+Módulo+Tipo+Categoría+Elemento, upsert), y un elemento que vuelve a «—» sin observación propia no viajaba: la hoja
    se quedaba con su «Sí»/«No» de antes. Se anota, por módulo y fecha, lo que viaja CON contenido; si después falta, viaja
-   en blanco y la fila de la hoja queda en «—». Se anota al enviar (también si se queda en la cola, que desde A8 no caduca);
+   en blanco y la fila de la hoja queda en «—». Se anota cuando el envío LLEGA o se queda en la cola (que desde A8 no caduca),
+   nunca antes: si falla sin quedar en la cola (rechazado, en curso, sin espacio), el siguiente vuelve a llevar el blanco;
    lo que ya viajó en blanco se olvida. Se guardan 60 días. Sin espacio para anotarlo, el envío sigue: sólo se pierde esta
    corrección. */
-const DX_ENV_KEY = "dx_enviado_v1";
+/* Revisión de la B (2026-11-07) · la clave lleva el prefijo de la app (PRE). Sin él no entraba en el respaldo, ni en el
+   medidor de espacio, ni en la limpieza (`STORAGE_NAMESPACES`). La del nombre viejo pasa a la nueva al leerla (_lsMudarClave). */
+const DX_ENV_KEY = PRE + "dx_enviado_v1";
+const DX_ENV_KEY_VIEJA = "dx_enviado_v1";
 const DX_ENV_DIAS = 60;
 function _dxEnviados(){
-  try{ const o = JSON.parse(localStorage.getItem(DX_ENV_KEY) || "{}"); return (o && typeof o === "object" && !Array.isArray(o)) ? o : {}; }
+  _lsMudarClave(DX_ENV_KEY_VIEJA, DX_ENV_KEY);
+  try{ const o = JSON.parse(localStorage.getItem(DX_ENV_KEY) || localStorage.getItem(DX_ENV_KEY_VIEJA) || "{}"); return (o && typeof o === "object" && !Array.isArray(o)) ? o : {}; }
   catch(_){ return {}; }
 }
 // La llave de la fila sin la fecha ni el módulo (ésos ya son el cajón): Tipo · Categoría · Elemento.
@@ -18090,9 +18105,10 @@ function _reproBumpTrSeq(trId){
 /* A11 (2026-11-06, usuario: «Releer y no repetir») · el siguiente TR-ID: uno más que el MAYOR entre la hoja releída, la
    del tablero y el último que dio este equipo. Antes, con filas leídas, el contador del equipo no contaba: un traslado
    recién enviado que la lectura aún no traía volvía a salir con el mismo número. */
-function _reproTrIdSiguiente(){
+// `antes` (opcional): una lectura anterior de la hoja que ya no está en _reproSheets; cuenta SÓLO para no repetir el número.
+function _reproTrIdSiguiente(antes){
   const t=_REPRO_SHEETS.transfer, ids=[];
-  _reproStoreRows(t).concat((_reproSheets && _reproSheets[t]) || []).forEach(function(r){ ids.push(r && r["TR-ID"]); });
+  _reproStoreRows(t).concat((_reproSheets && _reproSheets[t]) || [], antes || []).forEach(function(r){ ids.push(r && r["TR-ID"]); });
   const last=localStorage.getItem("larv4_mad_trseq")||"";
   if(last) ids.push(last);
   return _reproNextTrIdFrom(ids);
@@ -18148,12 +18164,14 @@ async function madReproTransfer(){
     : destinos;
   _reproPaso("repro-t-paso", "Leyendo los traslados…");
   /* A11 (2026-11-06, usuario: «Releer y no repetir») · SE RELEE la hoja antes de numerar. Sin `force` valía la lectura de
-     antes (o la del tablero, de hasta 5 min): dos traslados seguidos sacaban el MISMO «siguiente» (medido el 04-11: 2 de
-     10 TR-ID en dos fechas). Si la relectura falla, sigue con lo que tenía (y el contador del equipo), como antes: sin
-     `force`, una lectura vieja también se usaba; el aviso de hoja recortada (D11) no cambia. */
+     antes (o la del tablero, de hasta 5 min): dos traslados seguidos podían sacar el MISMO «siguiente». Si la relectura
+     falla, el número sale de lo que tenía (y del contador del equipo), como antes;
+     el aviso de hoja recortada (D11) no cambia.
+     Revisión de la B (2026-11-07, usuario: «No reponerla») · esa lectura vieja cuenta SÓLO para el número: no vuelve a
+     _reproSheets. Reponerla hacía que el Saldo la diera por recién leída (`_madHojaLeida`) aunque tuviera horas, que es
+     el defecto A1 del 09-08; sin ella, el Saldo la da por no leída y la vuelve a pedir. */
   const _trAntes = _reproSheets && _reproSheets[_REPRO_SHEETS.transfer];
   await _reproEnsureSheet(_REPRO_SHEETS.transfer, null, true);
-  if(_trAntes && !(_reproSheets && _reproSheets[_REPRO_SHEETS.transfer])) _reproPutRows(_REPRO_SHEETS.transfer, _trAntes);
   _reproPaintMatrixBanner();
   /* ⚠⚠ D11 · CON EL LEDGER RECORTADO NO HAY TR-ID SEGURO, y aquí no basta con avisar. Hasta el
      2026-10-19 el máximo salía de las filas más ANTIGUAS, así que el TR-ID «siguiente» ya existía
@@ -18167,7 +18185,7 @@ async function madReproTransfer(){
     _reproNada("repro-t-paso", "No se envió: Google devolvió incompleta la lista de traslados, y el número del próximo traslado podría repetir uno que ya existe. Hay que ampliar el límite de lectura del GAS; lo pegado sigue aquí.", 9000);
     return;
   }
-  const trId=_reproTrIdSiguiente();
+  const trId=_reproTrIdSiguiente(_trAntes);
   const res=_reproBuildTransferBatch({ fecha:fecha, tipo:tipo, origen:origen, destinos:_destinos, composicion:composicion, matrixIndex:_reproMatrixIndex(), trId:trId });
   if(res.error){ _reproNada("repro-t-paso", res.error, 3500); return; }
   res.report.sinConfirmar=_scT;
@@ -28371,10 +28389,13 @@ function micSessionKey(d){
    de sesión sólo cambia con 🧹, y un análisis reutilizado otro día comparte sesión con ése. El sistema no carga esas
    filas (MARCA_ANULADA y filaAnulada, src/core/sheets.js). Las anulaciones esperan en LAB_ANULAR_KEY hasta que salen
    (entregadas o en la cola) junto con el siguiente envío de su hoja. Las sesiones heredadas (sin sesión) no entran. */
-const LAB_ANULAR_KEY = "lab_anular_v1";
+// Revisión de la B (2026-11-07) · con el prefijo de la app, como DX_ENV_KEY (ver allí); la del nombre viejo pasa a ésta.
+const LAB_ANULAR_KEY = PRE + "lab_anular_v1";
+const LAB_ANULAR_KEY_VIEJA = "lab_anular_v1";
 const LAB_MARCA_ANULADA = "⛔ ANULADA";
 function _labAnulacionesTodas(){
-  try{ const o = JSON.parse(localStorage.getItem(LAB_ANULAR_KEY) || "{}"); return (o && typeof o === "object" && !Array.isArray(o)) ? o : {}; }
+  _lsMudarClave(LAB_ANULAR_KEY_VIEJA, LAB_ANULAR_KEY);
+  try{ const o = JSON.parse(localStorage.getItem(LAB_ANULAR_KEY) || localStorage.getItem(LAB_ANULAR_KEY_VIEJA) || "{}"); return (o && typeof o === "object" && !Array.isArray(o)) ? o : {}; }
   catch(_){ return {}; }
 }
 function _labAnulaciones(tipo){ const l = _labAnulacionesTodas()[tipo]; return Array.isArray(l) ? l : []; }
@@ -28407,7 +28428,8 @@ function _labCambioDeClave(lista, nuevos, mismaSesion, clave){
   return { accion:"cancelar", previos:previos };
 }
 /** La corrección: fuera del historial lo de las claves viejas y, de las que llegaron a la hoja, una anulación pendiente.
- *  `llave(d)`: los campos de la clave de la hoja. Una anulación de una clave a la que se vuelve, sobra. */
+ *  `llave(d)`: los campos de la clave de la hoja. Una anulación de una clave a la que se vuelve, sobra.
+ *  → { lista, anul }. NO guarda nada: lo guarda `_labGuardarJunto`, las dos cosas o ninguna. */
 function _labCorregir(tipo, lista, previos, nuevos, clave, llave){
   const fuera = new Set(previos.map(function(r){ return r.id; }));   // por id: `previos` es de otra lectura de la lista
   const hacia = _labDescribir(nuevos[0].data);
@@ -28421,8 +28443,25 @@ function _labCorregir(tipo, lista, previos, nuevos, clave, llave){
     ya.add(k);
     anul.push({ data: llave(r.data), hacia: hacia, ts: Date.now() });
   });
-  _labAnulacionesGuardar(tipo, anul);
-  return lista.filter(function(r){ return !(r && fuera.has(r.id)); });
+  return { lista: lista.filter(function(r){ return !(r && fuera.has(r.id)); }), anul: anul };
+}
+/* Revisión de la B (2026-11-07, usuario: «Todo o nada») · LA ANULACIÓN Y LA CORRECCIÓN SE GUARDAN JUNTAS. La anulación se
+   guardaba ANTES que el análisis corregido: sin espacio para éste, quedaba la anulación sola, y el envío siguiente anulaba en
+   la hoja la fecha vieja sin que la nueva existiera en ninguna parte. Ahora, si no cabe una de las dos, no se guarda ninguna
+   y el análisis sigue como estaba. `guardar()` guarda la lista y dice si cupo; sin `anul` (no es corrección), sólo eso. */
+function _labGuardarJunto(tipo, anul, guardar){
+  if(!anul) return guardar();
+  let antes = null;
+  try{ antes = localStorage.getItem(LAB_ANULAR_KEY); }catch(_){}
+  if(!_labAnulacionesGuardar(tipo, anul)){
+    toast("❌ No se guardó la corrección: no cabe en este navegador. El análisis sigue como estaba. Libera espacio y vuelve a intentarlo.","err",8000);
+    return false;
+  }
+  if(guardar()) return true;
+  // Se vuelve EXACTAMENTE a lo de antes, que cabía: primero se quita lo nuevo. Lo de antes puede ser más largo (al volver
+  // a una fecha, su anulación sobra y sale), y con el navegador lleno reemplazar sin quitar puede no caber (2.ª revisión).
+  try{ localStorage.removeItem(LAB_ANULAR_KEY); if(antes !== null) localStorage.setItem(LAB_ANULAR_KEY, antes); }catch(_){}
+  return false;
 }
 /** Las filas de las anulaciones pendientes de `tipo`, armadas con el MISMO constructor de su hoja: la clave de la sesión
  *  vieja, «⛔ ANULADA · pasó al …» en Responsable y nada más. → { filas, lista } (lista: las que van). */
@@ -28948,9 +28987,12 @@ function saveMicLocal(){
   const _cambio = _labCambioDeClave(_micRaw(), newRecords, function(a, b){ return a.departamento === b.departamento && a.formato === b.formato; }, micSessionKey);
   if(_cambio.accion === "cancelar"){ toast("No se guardó nada","info",2500); return -1; }
   if(_cambio.accion === "otro"){ draft.meta.sid = _micNewSid(); saveMicDraft(draft); newRecords.forEach(function(r){ r.data.sid = draft.meta.sid; }); }
-  let list = _micRaw();
-  if(_cambio.accion === "corregir") list = _labCorregir("mic", list, _cambio.previos, newRecords, micSessionKey,
-    function(d){ return { fechaMuestreo:d.fechaMuestreo, corrida:d.corrida, departamento:d.departamento, formato:d.formato, sid:d.sid }; });
+  let list = _micRaw(), _anul = null;
+  if(_cambio.accion === "corregir"){
+    const _c = _labCorregir("mic", list, _cambio.previos, newRecords, micSessionKey,
+      function(d){ return { fechaMuestreo:d.fechaMuestreo, corrida:d.corrida, departamento:d.departamento, formato:d.formato, sid:d.sid }; });
+    list = _c.lista; _anul = _c.anul;
+  }
   // Reemplazo ESPEJO de la hoja (replaceByKeyRows) SOLO para la(s) clave(s) del
   // formato activo: quita los registros cuya clave de sesión coincida con la de
   // algún registro nuevo y re-añade los nuevos. Otros formatos/fechas/corridas
@@ -28960,7 +29002,7 @@ function saveMicLocal(){
   list = list.filter(r=> !(r.data && newKeys.has(micSessionKey(r.data))));
   list = list.concat(newRecords);
   const saved = newRecords.length;
-  const _ok = _micSave(list);
+  const _ok = _labGuardarJunto("mic", _anul, function(){ return _micSave(list); });
   updateDots(); updateSyncUI(); buildGrid();
   if(!_ok) return -2;                  // almacenamiento lleno: NO mentir "guardado"
   return saved;
@@ -30376,9 +30418,12 @@ function saveCalLocal(){
   const _cambio = _labCambioDeClave(_calRaw(), newRecords, function(a, b){ return a.departamento === b.departamento && a.formato === b.formato; }, calSessionKey);
   if(_cambio.accion === "cancelar"){ toast("No se guardó nada","info",2500); return -1; }
   if(_cambio.accion === "otro"){ draft.meta.sid = _calNewSid(); saveCalDraft(draft); newRecords.forEach(function(r){ r.data.sid = draft.meta.sid; }); }
-  let list=_calRaw();
-  if(_cambio.accion === "corregir") list = _labCorregir("cal", list, _cambio.previos, newRecords, calSessionKey,
-    function(d){ return { fechaMuestreo:d.fechaMuestreo, corrida:d.corrida, departamento:d.departamento, formato:d.formato, sid:d.sid }; });
+  let list=_calRaw(), _anul=null;
+  if(_cambio.accion === "corregir"){
+    const _c = _labCorregir("cal", list, _cambio.previos, newRecords, calSessionKey,
+      function(d){ return { fechaMuestreo:d.fechaMuestreo, corrida:d.corrida, departamento:d.departamento, formato:d.formato, sid:d.sid }; });
+    list = _c.lista; _anul = _c.anul;
+  }
   // Reemplazo espejo de la hoja SOLO para la clave del formato activo: quita las
   // sesiones cuya clave coincide con la de algún registro nuevo y re-añade los
   // nuevos. Otros formatos quedan intactos (conservan su estado synced).
@@ -30386,7 +30431,7 @@ function saveCalLocal(){
   list = list.filter(r=> !(r.data && newKeys.has(calSessionKey(r.data))));
   list = list.concat(newRecords);
   const saved = newRecords.length;
-  const _ok = _calSave(list);
+  const _ok = _labGuardarJunto("cal", _anul, function(){ return _calSave(list); });
   updateDots(); updateSyncUI(); buildGrid();
   if(!_ok) return -2;
   return saved;
@@ -31045,15 +31090,18 @@ function savePatLocal(){
   const _cambio = _labCambioDeClave(_patRaw(), newRecords, function(){ return true; }, patSessionKey);
   if(_cambio.accion === "cancelar"){ toast("No se guardó nada","info",2500); return -1; }
   if(_cambio.accion === "otro"){ draft.meta.sid = _patNewSid(); savePatDraft(draft); newRecords.forEach(function(r){ r.data.sid = draft.meta.sid; }); }
-  let list=_patRaw();
-  if(_cambio.accion === "corregir") list = _labCorregir("pat", list, _cambio.previos, newRecords, patSessionKey,
-    function(d){ return { fechaMuestreo:d.fechaMuestreo, corrida:d.corrida, sid:d.sid }; });
+  let list=_patRaw(), _anul=null;
+  if(_cambio.accion === "corregir"){
+    const _c = _labCorregir("pat", list, _cambio.previos, newRecords, patSessionKey,
+      function(d){ return { fechaMuestreo:d.fechaMuestreo, corrida:d.corrida, sid:d.sid }; });
+    list = _c.lista; _anul = _c.anul;
+  }
   // Reemplazo espejo de la hoja: quita la sesión cuya clave coincide y re-añade.
   const newKeys = new Set(newRecords.map(r=> patSessionKey(r.data)));
   list = list.filter(r=> !(r.data && newKeys.has(patSessionKey(r.data))));
   list = list.concat(newRecords);
   const saved = newRecords.length;
-  const _ok = _patSave(list);
+  const _ok = _labGuardarJunto("pat", _anul, function(){ return _patSave(list); });
   updateDots(); updateSyncUI(); buildGrid();
   if(!_ok) return -2;
   return saved;
