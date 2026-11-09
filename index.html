@@ -3196,6 +3196,52 @@ function _purgeQueueMark(mark){
   }catch(_){}
 }
 
+/* B5 (2026-11-08, usuario: «Decirlo bien») · ¿Qué espera en la cola de este registro? Quitarlo del dispositivo no lo saca de
+   la cola, así que el aviso de 🗑 no puede decir siempre «se pierde».
+   Revisión del 08-11 (usuario: «Distinguir las dos») · y tampoco «llegará» con CUALQUIER versión: si se corrigió después de
+   encolarse, lo que espera es lo de ANTES y la corrección sí se pierde. Devuelve:
+     · "actual"   — espera la versión de AHORA: Score, Auditoría y Mantenimiento llevan la versión en la llave (`id@ts`);
+                    Traslado, en el sello de su marca (la huella de lo que viajó, `_marcaSellar`), igual a la de ahora;
+     · "anterior" — sólo una de antes (o, en Traslado, una sin sello con que comparar);
+     · null       — nada suyo en la cola. */
+function _colaVersionEnCola(kind, rec){
+  if(!kind || !rec || rec.id == null || rec.id === "") return null;
+  const sid = String(rec.id), conVersion = _COLA_CON_VERSION.indexOf(kind) !== -1, actual = sid + "@" + rec.ts;
+  let hay = null, huella;   // la huella de ahora, sólo si hace falta (Traslado)
+  _loadSyncQueue().forEach(function(it){
+    const m = it && it.mark;
+    if(hay === "actual" || !m || m.kind !== kind || !Array.isArray(m.keys)) return;
+    m.keys.forEach(function(k){
+      k = String(k);
+      if(conVersion){
+        if(k === actual) hay = "actual";
+        else if(k.indexOf(sid + "@") === 0 && hay !== "actual") hay = "anterior";
+        return;
+      }
+      if(k !== sid) return;
+      if(huella === undefined){ try{ huella = _marcaHuellas([rec], function(r){ return r.id; })[sid]; }catch(_){ huella = null; } }
+      const sello = m.sellos && Object.prototype.hasOwnProperty.call(m.sellos, sid) ? m.sellos[sid] : undefined;
+      if(sello !== undefined && huella != null && sello === huella) hay = "actual";
+      else if(hay !== "actual") hay = "anterior";
+    });
+  });
+  return hay;
+}
+/* El aviso de quitar (o, en Traslado, borrar) algo NO enviado, según lo que espere en la cola (`_colaVersionEnCola`).
+   `que` es «esta evaluación», «este traslado»…; con la versión de ahora en la cola no promete que LLEGUE: la cola aún
+   descarta por su tope o si la hoja lo rechaza por sus datos, y entonces ya no quedaría otra copia. */
+function _avisoQuitarNoEnviado(enCola, que, femenino, borrar){
+  const pron = femenino ? "la" : "lo", fin = femenino ? "a" : "o";
+  const tu = borrar ? "borras" : "quitas", si = borrar ? "borres" : "quites", hacer = borrar ? "Borrarl" : "Quitarl";
+  if(enCola === "actual")
+    return "Ya hay un envío de " + que + " esperando en la cola: se enviará desde ahí aunque " + pron + " " + si
+      + " de este dispositivo (si la hoja lo rechazara, ya no quedaría otra copia).\n\n¿" + hacer + fin + " del dispositivo?";
+  if(enCola === "anterior")
+    return "En la cola espera una versión ANTERIOR de " + que + ": se enviará esa, pero lo cambiado después NO se ha enviado y, si "
+      + pron + " " + tu + ", se pierde.\n\n¿" + hacer + fin + " igualmente?";
+  return (que.charAt(0).toUpperCase() + que.slice(1)) + " NO se ha enviado: si " + pron + " " + tu + ", se pierde.\n\n¿" + hacer + fin + " igualmente?";
+}
+
 /* 2026-11-03 (pauta 1.2) · ¿Espera en la cola un envío con ALGUNA de estas llaves? Entonces no puede salir directo: si lleva otras que éste
    no lleva, _purgeQueueMark no lo retira —se perderían los demás— y al vaciarse volvería a escribir sobre lo de ahora los datos viejos de
    las llaves compartidas, con la app diciendo «enviado». La salida es respetar el orden: ver postPayload.
@@ -14306,7 +14352,7 @@ function renderMadDesoves(d, corr){
     + '<div class="fc-h"><div class="fc-t">🥚 Maduración · Desoves</div><span class="ssp ssp-mt">'+escapeHtml(todayStr)+'</span></div>'
     + '<div class="fc-b">'
     +   '<div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:8px;padding:7px 12px;margin-bottom:10px;font-size:11px;color:#1e40af;display:flex;align-items:flex-start;gap:8px">'
-    +     '<span style="font-size:16px">ℹ️</span><span>La producción se registra por <b>lote y código genético</b>, no por tanque: las copuladas de varios tanques se juntan en un pool y al devolverlas nadie identifica cuáles eran.<br>Los conteos grandes van <b>en miles</b> (escribe <b>6500</b> para 6.500.000). <b>N2 y N5 se completan después</b>: en <b>📋 Desoves pendientes</b> pulsa <b>✏️ Completar</b>, rellena lo nuevo y guarda. Con el N5 guardado, el desove sale de la lista. Sus fechas <b>vienen puestas</b> —N2 la del desove y N5 la del día siguiente— y <b>puedes cambiarlas</b> si el conteo se hizo otro día: la que toques se queda en amarillo y deja de seguir a la del desove.</span>'
+    +     '<span style="font-size:16px">ℹ️</span><span>La producción se registra por <b>lote y código genético</b>, no por tanque: las copuladas de varios tanques se juntan en un pool y al devolverlas nadie identifica cuáles eran.<br>Los conteos grandes van <b>en miles</b> (escribe <b>6500</b> para 6.500.000). <b>N2 y N5 se completan después</b>: en <b>📋 Desoves pendientes</b> pulsa <b>✏️ Completar</b>, rellena lo nuevo y guarda. Con el N5 guardado, el desove sale de la lista. Sus fechas <b>vienen puestas</b> —N2 la del día siguiente al desove y N5 la del otro— y <b>puedes cambiarlas</b> si el conteo se hizo otro día: la que toques se queda en amarillo y deja de seguir a la del desove.</span>'
     +   '</div>'
     +   (corr ? _madDesCorrBannerHTML(d, corr) : d ? '<div id="md-edit" style="background:#fef9c3;border:1.5px solid #fde047;border-radius:8px;padding:7px 12px;margin-bottom:10px;font-size:12px;color:#713f12">✏️ Completando el desove del <b>'+escapeHtml(d.fecha)+'</b> · <b>'+escapeHtml(d.lote)+'</b> · <b>'+escapeHtml(d.codigoGenetico)+'</b>. Rellena lo nuevo y guarda; 🧹 Vaciar sale sin guardar.</div>' : '')
     +   '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">'
@@ -20032,10 +20078,10 @@ async function _madTanquesEnviar(payload, opts, gas){
 }
 
 /* 2026-09-30 (usuarios: partes de Tanques DUPLICADOS en la hoja) · ¿LA MISMA RONDA YA ESTÁ EN LA HOJA COMO OTRO PARTE?
-   Medido en la hoja de producción (736 filas): ninguna llave repetida y ninguna fila sin Hora ni Parte. El duplicado es la
+   Medido en la hoja de producción: ninguna llave repetida y ninguna fila sin Hora ni Parte. El duplicado es la
    misma ronda dada DOS veces desde dos dispositivos —o dos apps: index (8) y el MCP guardan en sitios distintos—, cada uno
-   con su propio número de parte: el 29/09, Sala 5, «21:22 P1» y «21:24 P3» con las mismas 3 ♀ muertas en T7, que el libro
-   resta dos veces. El GAS no puede saber cuál es la buena (una ronda real puede repetir cifras) y numerar por la hoja no es
+   con su propio número de parte: la misma sala y el mismo día, dos partes a pocos minutos con las mismas muertes en el
+   mismo tanque, que el libro resta dos veces. El GAS no puede saber cuál es la buena (una ronda real puede repetir cifras) y numerar por la hoja no es
    posible al guardar (sin red), así que se PREGUNTA antes de enviar. La regla:
      · la hoja FRESCA, del mismo (Fecha, Sala, Tanque);
      · sólo filas de OTRA llave (otra Hora u otro Parte): la misma llave es el mismo parte, y reenviarlo lo ACTUALIZA;
@@ -23609,7 +23655,7 @@ function scoreBorrar(id){
   const r = _scoreRaw().find(function(x){ return x && x.id === id; });
   if(!r) return;
   if(!confirm(r.synced ? "¿Quitar esta evaluación del dispositivo? (Lo enviado sigue en la hoja.)"
-    : "Esta evaluación NO se ha enviado: si la quitas, se pierde.\n\n¿Quitarla igualmente?")) return;
+    : _avisoQuitarNoEnviado(_colaVersionEnCola("score", r), "esta evaluación", true))) return;
   _scoreSave(_scoreRaw().filter(function(x){ return x && x.id !== id; }));
   renderScore(); updateDots(); updateSyncUI();
 }
@@ -24252,7 +24298,7 @@ function _mntBorrar(ronda, id){
   if(!r) return;
   const cual = ronda ? "esta ronda" : "este trabajo";
   if(!confirm(r.synced ? "¿Quitar " + cual + " del dispositivo? (Lo enviado sigue en la hoja.)"
-    : "Lo de " + cual + " NO se ha enviado: si lo quitas, se pierde.\n\n¿Quitarlo igualmente?")) return;
+    : _avisoQuitarNoEnviado(_colaVersionEnCola(ronda ? "mntronda" : "mnttrabajo", r), cual, ronda))) return;
   _mntSave(key, _mntRaw(key).filter(function(x){ return x && x.id !== id; }));
   if(ronda) renderMntRonda(); else renderMntTrabajo();
   updateDots(); updateSyncUI();
@@ -25204,7 +25250,7 @@ function audBorrar(id){
   const r = _audRaw().find(function(x){ return x && x.id === id; });
   if(!r) return;
   if(!confirm(r.synced ? "¿Quitar esta auditoría del dispositivo? (Lo enviado sigue en la hoja.)"
-    : "Esta auditoría NO se ha enviado: si la quitas, se pierde.\n\n¿Quitarla igualmente?")) return;
+    : _avisoQuitarNoEnviado(_colaVersionEnCola("auditoria", r), "esta auditoría", true))) return;
   _audSave(_audRaw().filter(function(x){ return x && x.id !== id; }));
   renderAud(); updateDots(); updateSyncUI();
 }
@@ -27671,8 +27717,10 @@ async function syncAllPendingTras(){
    ⚠ No toca Google Sheets: lo que ya se sincronizó sigue en la hoja. */
 function trasBorrarTraslado(){
   const rec = trasRegistroActivo();
+  // B5 (2026-11-08, usuario: «Decirlo bien») · borrarlo de aquí no lo saca de la cola; y si lo que espera es una versión
+  // ANTERIOR del viaje, lo añadido después sí se pierde (revisión del 08-11). El aviso es el de las demás fichas.
   const aviso = (rec && !rec.synced)
-    ? "Este traslado NO se ha sincronizado todavía.\n\nSi lo borras, sus datos se pierden y no llegarán a la hoja.\n\n¿Borrarlo igualmente?"
+    ? _avisoQuitarNoEnviado(_colaVersionEnCola("tras", rec), "este traslado", false, true)
     : "¿Vaciar la ficha y borrar este traslado del dispositivo para empezar otro?";
   if(!confirm(aviso)) return;
   if(rec){
@@ -31344,7 +31392,7 @@ function GAS(){
 // suite en rojo, y la propia prueba dice el sello nuevo. Por eso ?p=ver no puede mentir.
 // Para saber si el GAS desplegado es el del repo: ⚙ Config → Probar conexión, o abrir
 // la URL del Web App con ?p=ver y comparar con esta línea.
-const GAS_VERSION = "0c019e78e429";
+const GAS_VERSION = "a1873bf5f9c9";
 
 // ── LO QUE ESTE GAS SABE HACER (2026-09-14) ─────────────────────────
 // Va en ?p=ver junto al sello: es lo que un cliente tiene que saber ANTES de enviar. Un GAS que
@@ -32337,12 +32385,16 @@ function ensureHeaders(ws, headers) {
 // 🔧 Y las dos de Mantenimiento (2026-10-29, usuario: «Sí, vigilarlas»): también se escriben por posición
 // (upsertAstRows) y pueden NACER de pegar a mano los .tsv de la importación, así que una cabecera pegada
 // corrida o retocada escribiría cada dato en otra columna sin aviso. Están firmadas: el aviso culpa a la HOJA.
+// 🔧 Y Zonas y Broodstock (2026-11-08, usuario: «Sí, las dos»): también posicionales (llave [0,1,2] y reemplazo por
+// Fecha de corte · Piscina), y sólo tenían su firma de dos columnas. Medido ese día, sólo leyendo: sus cabeceras
+// vivas son las de la app, columna a columna, así que la app al día no se ve rechazada. Están firmadas.
 // El cliente, ante el rechazo, no marca nada como sincronizado: lo tecleado se queda en
 // el dispositivo hasta que se actualice la app (medido en el cliente de f1d9687).
 var MAD_ESQUEMA_VIGILADO = [
   "Maduración Sala", "Maduración Tanques", "Maduración Lotes",
   "Maduración Ingreso", "Maduración Movimientos", "Maduración Fin de Ciclo",
   "Maduración Tratamientos", "Maduración Mortalidad Desove", "Maduración Alimentación",
+  "Maduración Zonas", "Maduración Broodstock",
   "Mantenimiento Trabajos", "Mantenimiento Lecturas"
 ];
 function _cabeceraNorm_(v) {
@@ -32784,7 +32836,8 @@ function upsertAstRows(ws, newRows, merge) {
 // la columna Sesión se preserva. Filas heredadas sin Sesión no se emparejan (se
 // conservan). Sustituye la clave compuesta anterior (Fecha|Corrida|Módulo|Área|
 // Sistema|Lote|Día), que hacía que editar cualquiera de esos campos creara fila nueva.
-// NOTA: algasRowKey / algasInKey (abajo) quedan sin uso con esta clave.
+// (2026-11-08, usuario: «En ese mismo cambio» · se quitaron algasRowKey / algasInKey, las funciones de esa clave
+//  anterior, que ya no usaba nadie.)
 function upsertAlgasRows(ws, newRows) {
   var widest = 0;
   for (var wi = 0; wi < newRows.length; wi++) if (newRows[wi].length > widest) widest = newRows[wi].length;
@@ -32841,33 +32894,6 @@ function upsertAlgasRows(ws, newRows) {
     added = u.filas.length;
   }
   return { upserted: updated, appended: added };
-}
-
-function algasRowKey(row) {
-  // Fila leída de Sheets: row[0] puede ser Date (col formateada dd/mm/yyyy).
-  // Clave: Fecha|Corrida_Larv|Modulo_Larv|Area_Algas|Sistema|Lote|Dia_Proceso.
-  return [
-    dStr(row[0]),
-    String(row[1] == null ? "" : row[1]).trim(),
-    String(row[2] == null ? "" : row[2]).trim(),
-    String(row[3] == null ? "" : row[3]).trim(),
-    String(row[4] == null ? "" : row[4]).trim(),
-    String(row[5] == null ? "" : row[5]).trim(),
-    String(row[6] == null ? "" : row[6]).trim()
-  ].join("|");
-}
-function algasInKey(row) {
-  // Fila entrante: row[0] siempre llega como string "yyyy-MM-dd".
-  // Clave: Fecha|Corrida_Larv|Modulo_Larv|Area_Algas|Sistema|Lote|Dia_Proceso.
-  return [
-    String(row[0] == null ? "" : row[0]).slice(0, 10),
-    String(row[1] == null ? "" : row[1]).trim(),
-    String(row[2] == null ? "" : row[2]).trim(),
-    String(row[3] == null ? "" : row[3]).trim(),
-    String(row[4] == null ? "" : row[4]).trim(),
-    String(row[5] == null ? "" : row[5]).trim(),
-    String(row[6] == null ? "" : row[6]).trim()
-  ].join("|");
 }
 
 // ── Upsert genérico para hojas de Maduración ──
