@@ -12308,8 +12308,7 @@ function madHistEditar(id){
   if((_madBorrTocado[e.ficha] || _madBorrOrigen[e.ficha]==="borrador") && !confirm("Se reemplazará lo tecleado en "+_madHistNombre(e.ficha)+" por el envío del "+e.fecha+", para corregirlo. ¿Continuar?")) return;
   /* Como la corrección de Desoves: lo que se teclee se guarda como borrador del día de la ficha (_madBorrFecha), no bajo
      la fecha del envío, que va FIJA (es llave); al recargar, el borrador trae la corrección con su aviso. */
-  fp.innerHTML=html;
-  _madBorrAdaptar(e.ficha, fp, e.fecha);
+  _madPanelRestaurar(e.ficha, fp, html, e.fecha);   // punto 7
   _madBorrTocado[e.ficha]=false;
   _madBorrOrigen[e.ficha]="limpio";
   const f=document.getElementById(cfg.fecha);
@@ -12666,8 +12665,7 @@ function madBorrTraerDelDia(ficha){
   if(!cfg) return;
   const dia = _madBorrFecha[ficha], html = madBorrLeer(ficha, dia), fp = document.getElementById(cfg.panel);
   if(!html || !fp) return;
-  fp.innerHTML = html;
-  _madBorrAdaptar(ficha, fp, dia);
+  _madPanelRestaurar(ficha, fp, html, dia);   // punto 7
   const f = document.getElementById(cfg.fecha);
   /* 🔴 2026-09-24 (punto 1) · una fecha de SÓLO LECTURA es la llave de lo que se completa o se corrige (✏️ Completar,
      ✏️ del historial): su borrador se guarda bajo el día en que se tecleó, no bajo la suya. Ponerle ese día la movía
@@ -12675,6 +12673,28 @@ function madBorrTraerDelDia(ficha){
   if(f && !f.hasAttribute("readonly")) f.value = dia;
   _madBorrOrigen[ficha] = "borrador";
   _madBorrTocado[ficha] = false;
+}
+/* 2026-11-15 (punto 7 de la pauta del 12-11) · TRAER UN BORRADOR O UN ENVÍO DEL 📜 SIN LO VIEJO QUE NO SE TECLEÓ. Un borrador y la copia
+   para ✏️ Editar son el HTML del panel TAL COMO ESTABA, y sólo _madBorrAdaptar lo retocaba (campos de la ficha que cambiaron): volvían
+   como eran al guardarse el cuadro ℹ️ de ayuda (el texto nuevo del de Inf. Supervisor, A20, no salía), la lista 💾 y el registro de
+   envíos, el veredicto 🔍 y, en Desoves, los totales del día y la lista de pendientes. Lo que no es de quien teclea se pone al día: la
+   ayuda, la del panel que había (la de la versión en uso); la lista 💾, el registro y los pendientes, repintados; y el veredicto viejo
+   se quita (usuario: «Quitarlo al abrir»): ya no corresponde a lo de ahora, y se vuelve a pulsar 🔍. Guardar revisa por su cuenta. */
+function _madAyudaDe(fp){
+  const spans = fp ? fp.querySelectorAll(".fc-b > div > span:first-child") : [];
+  for(let i = 0; i < spans.length; i++){ if(spans[i].textContent.trim() === "ℹ️") return spans[i].parentElement; }
+  return null;
+}
+function _madPanelRestaurar(ficha, fp, html, dia){
+  const viva = _madAyudaDe(fp), ayuda = viva ? viva.outerHTML : "";
+  fp.innerHTML = html;
+  _madBorrAdaptar(ficha, fp, dia);
+  const vieja = _madAyudaDe(fp);
+  if(ayuda && vieja) vieja.outerHTML = ayuda;
+  const cfg = MAD_BORR_FICHAS[ficha], rep = cfg ? document.getElementById(cfg.fecha.replace(/-fecha$/, "-report")) : null;
+  if(rep) rep.innerHTML = "";
+  try{ _madLocRepinta(ficha); }catch(_){}
+  if(ficha === "desoves"){ try{ _madDesPendRepinta(); }catch(_){} }
 }
 /* Cada ficha se nombra, en vez de un `window[nombre]`: el monolito se arranca en las pruebas
    con `new Function`, donde nada cuelga de `window`, y ahí un despacho por nombre se caería
@@ -12841,13 +12861,14 @@ function madBorrFechaChange(ficha){
   /* Se trae el día elegido. Sin borrador, la ficha se monta LIMPIA: arrastrar lo de ayer a un día en el que no se
      tecleó nada es lo que pedía el 2026-09-15. Sin tocar, lo que se deja no se guarda: ya estaba guardado, o no
      había nada (y guardar una ficha en blanco pisaría el borrador de ese día). */
-  fp.innerHTML = html;
-  if(html) _madBorrAdaptar(ficha, fp, nueva);
-  else _madBorrRender(ficha);
+  if(html) _madPanelRestaurar(ficha, fp, html, nueva);   // punto 7
+  else { fp.innerHTML = html; _madBorrRender(ficha); }
   /* DESPUÉS del render: el montaje escribe today() en su campo de fecha, y aquí manda la
-     fecha elegida. Y `_madBorrFecha` se fija al final por lo mismo. */
+     fecha elegida. Y `_madBorrFecha` se fija al final por lo mismo.
+     2026-11-15 (punto 7) · Salvo si es de SÓLO LECTURA, como en madBorrTraerDelDia: el borrador de ese día es una corrección
+     (✏️ del 📜, ✏️ Completar) y ésa es la llave de lo que se corrige; ponerle el día elegido la guardaba como fila NUEVA de otro día. */
   const f2 = document.getElementById(cfg.fecha);
-  if(f2) f2.value = nueva;
+  if(f2 && !f2.hasAttribute("readonly")) f2.value = nueva;
   _madBorrFecha[ficha] = nueva;
   _madBorrOrigen[ficha] = html ? "borrador" : "limpio";
   _madBorrTocado[ficha] = false;
@@ -14585,7 +14606,13 @@ function _madDesCorreccionRemata(model, desove){
   _madBorrOlvidarPantalla("desoves", model.fecha);
   madDesReiniciar();
 }
-async function madDesCorregirGuardar(){
+/* 2026-11-15 (punto 15 de la pauta del 12-11; la decisión de la pendiente 25: «Bloquear mientras envía») · LA CORRECCIÓN DE UN DESOVE,
+   EL BROODSTOCK Y LOS CUATRO ENVÍOS DEL REPRODUCTIVO TAMBIÉN BLOQUEAN SU PANEL. Esperan a la red —la corrección, hasta 90 s a que se
+   vacíe la cola; el reproductivo, a leer la MATRIZ— sin bloquear: un segundo toque mandaba lo mismo dos veces (en el reproductivo, dos
+   desoves o dos traslados de la misma hembra) y lo tecleado o pegado en la espera se borraba al terminar sin haber viajado. Como los
+   siete formularios, cada uno envuelve su cuerpo con _madGridBloqueada. */
+async function madDesCorregirGuardar(){ return _madGridBloqueada("fp-desoves", _madDesCorregirGuardar); }
+async function _madDesCorregirGuardar(){
   const b=document.getElementById("md-edit");
   const id=b ? (b.getAttribute("data-corrige")||"") : "", k=b ? (b.getAttribute("data-k")||"") : "";
   if(!id || !k){ toast("No hay ninguna corrección abierta.","warn",3500); return; }
@@ -17158,7 +17185,8 @@ function madBsGuardarLocal(){
   _madBs=null; madBsPintar();
   _madLocGuardado("broodstock");
 }
-async function madBsGuardar(){
+async function madBsGuardar(){ return _madGridBloqueada("fp-broodstock", _madBsGuardar); }   // punto 15 · ver madDesCorregirGuardar
+async function _madBsGuardar(){
   const _loc=madLocLeer("broodstock").length;
   const p=_madBsPreparar(_loc>0); if(!p) return;
   if(!p.envios.length && !_loc){ toast("No hay piscinas con datos que subir.","warn",4000); return; }
@@ -18453,7 +18481,9 @@ function _reproNadaOElegir(id, vivas, rojo, atencion, dur){
   _reproNada(id, rojo + extra, extra ? 9000 : dur);
 }
 
-async function madReproProcess(){
+// Punto 15 · los cuatro envíos del reproductivo bloquean su panel mientras esperan (ver madDesCorregirGuardar).
+async function madReproProcess(){ return _madGridBloqueada("fp-reproductivo", _madReproProcess); }
+async function _madReproProcess(){
   const fEl=document.getElementById("repro-fecha"), tEl=document.getElementById("repro-tipo"), cEl=document.getElementById("repro-codes");
   if(!fEl||!tEl||!cEl) return;
   const fecha=fEl.value, tipo=tEl.value;
@@ -18549,7 +18579,8 @@ function _reproAltaCollect(fecha){
    usado no es un caso especial que haya que negociar con el servidor — es otra fila más.
    🔑 Y el GAS al día se comprueba igual, pero donde corresponde: `_madIngGasAlDia` compara el
    SELLO para TODAS las fichas, así que esta pregunta suelta ya no añadía nada. */
-async function madReproAltaBatch(){
+async function madReproAltaBatch(){ return _madGridBloqueada("fp-reproductivo", _madReproAltaBatch); }   // punto 15
+async function _madReproAltaBatch(){
   const fEl=document.getElementById("repro-a-fecha"); const fecha=fEl?fEl.value:"";
   if(!isValidDate(fecha)){ toast("Fecha de ingreso inválida.","err",3500); return; }
   const _fut=_reproFechaFutura(fecha); if(_fut){ toast(_fut,"err",7000); return; }
@@ -18635,7 +18666,8 @@ function madReproDelDest(btn){
 }
 function madReproMezclaToggle(){ const t=document.getElementById("repro-t-tipo"); const comp=document.getElementById("repro-t-comp"); if(comp) comp.style.display=(t && t.value==="Mezcla")?"block":"none"; }
 
-async function madReproTransfer(){
+async function madReproTransfer(){ return _madGridBloqueada("fp-reproductivo", _madReproTransfer); }   // punto 15
+async function _madReproTransfer(){
   const g=function(id){ const e=document.getElementById(id); return e?e.value:""; };
   const fecha=g("repro-t-fecha"), tipo=g("repro-t-tipo");
   if(!isValidDate(fecha)){ toast("Fecha inválida.","err",3500); return; }
@@ -18824,7 +18856,8 @@ function _reproElegirHTML(clase){
   });
   return h + '<button class="btn bp" type="button" id="repro-eleg-btn" onclick="madReproRegistrarElegidas('+p.seq+')">✅ Registrar con la elegida</button></div>';
 }
-async function madReproRegistrarElegidas(seq){
+async function madReproRegistrarElegidas(seq){ return _madGridBloqueada("fp-reproductivo", function(){ return _madReproRegistrarElegidas(seq); }); }   // punto 15
+async function _madReproRegistrarElegidas(seq){
   const p = _reproElegirPend, mIdx = _reproMatrixIndex();
   if(!p || p.seq !== seq){ toast("Ese aviso ya no está vigente: vuelve a procesar el registro.","warn",5000); return; }
   if(!mIdx){ toast("No se pudo leer la MATRIZ: vuelve a intentarlo con 🔄.","err",6000); return; }
@@ -24895,6 +24928,22 @@ function _mntTrabActual(){
 }
 function _mntGuardarRonda(){ _lsSet(MNT_RONDA_DRAFT_KEY, JSON.stringify(_mntRondaActual())); }
 function _mntGuardarTrab(){ _lsSet(MNT_TRAB_DRAFT_KEY, JSON.stringify(_mntTrabActual())); }
+/* 2026-11-15 (punto 23 de la pauta del 12-11; usuario: «Que siga al reloj») · LA FICHA SIGUIENTE NACÍA CON LA FECHA Y HORA DEL GUARDADO
+   ANTERIOR. Al guardar, _mntRegistrar deja ya preparada la siguiente con la fecha (y en la ronda, la hora) de ESE momento; la ronda
+   siguiente, hecha horas o días después, salía con ellas si nadie las cambiaba. Ahora, al pintarla, una ficha EN BLANCO toma las de
+   ahora, salvo que alguien las haya puesto a mano (`_aMano`, que no viaja: _mntRegistrar la quita) o sea una guardada abierta con ✏️. */
+function _mntAlReloj(ronda){
+  const m = ronda ? _mntRondaActual() : _mntTrabActual();
+  if(m._aMano) return;
+  if(_mntRaw(ronda ? MNT_RONDA_KEY : MNT_TRAB_KEY).some(function(r){ return r && r.id === m.id; })) return;   // una guardada: es la suya
+  const enBlanco = ronda ? MNT_EQUIPOS.every(function(q){ return mntLecturaVacia(m.equipos[q.codigo]); })
+    : !(m.equipo || m.tipo || m.actividad || String(m.horometro || "").trim() || String(m.descripcion || "").trim());
+  if(!enBlanco) return;
+  const f = today(), h = _mntHoraAhora();
+  if(m.fecha === f && (!ronda || m.hora === h)) return;
+  m.fecha = f;
+  if(ronda){ m.hora = h; _mntGuardarRonda(); } else _mntGuardarTrab();
+}
 // La lectura de horómetro más alta de un equipo en este dispositivo (la pista «últ.»), o null.
 function _mntUltimo(lista, codigo){
   let u = null;
@@ -24911,6 +24960,7 @@ function mntRondaCampo(el){
   const k = el && el.getAttribute("data-mk");
   if(!k) return;
   _mntRondaActual()[k] = el.value;
+  if(k === "fecha" || k === "hora") _mntRondaActual()._aMano = true;   // punto 23 · la puso alguien: ya no sigue al reloj
   _mntGuardarRonda();
 }
 function mntRondaCelda(el){
@@ -24926,6 +24976,7 @@ function mntTrabCampo(el){
   if(!k) return;
   const m = _mntTrabActual();
   m[k] = el.value;
+  if(k === "fecha") m._aMano = true;   // punto 23 · la puso alguien: ya no sigue al reloj
   _mntGuardarTrab();
   // La parada de inicio a fin se ve en su campo mientras no se escriba otra; la pista del horómetro, con su equipo.
   if(k === "horaInicio" || k === "horaFin"){
@@ -24962,7 +25013,7 @@ function _mntRegistrar(ronda){
     + "\n\nSi el tablero se cambió o se reinició, dilo en Observaciones.\n¿Guardar igualmente?")) return null;
   const key = ronda ? MNT_RONDA_KEY : MNT_TRAB_KEY;
   const list = _mntRaw(key).filter(function(r){ return r && r.id !== m.id; });
-  const rec = { id: m.id, ts: Date.now(), synced: false, data: JSON.parse(JSON.stringify(m)) };
+  const rec = { id: m.id, ts: Date.now(), synced: false, data: _mntSinMarcas(m) };   // punto 23 · `_aMano` no viaja
   list.push(rec);
   if(!_mntSave(key, list)) return null;
   _mntRecordarTecnico(m.tecnico);
@@ -25000,9 +25051,12 @@ async function mntTrabEnviar(){
   renderMntTrabajo(); updateDots();
   await syncAllPendingMnt();
 }
+// Una copia de lo de pantalla sin las marcas que no son datos (punto 23: `_aMano`).
+function _mntSinMarcas(m){ const d = JSON.parse(JSON.stringify(m)); delete d._aMano; return d; }
 // ¿Lo de la pantalla tiene algo que NO coincide con lo guardado con su mismo ID?
 function _mntSinGuardar(key, m){
-  return !_mntRaw(key).some(function(r){ return r && r.id === m.id && JSON.stringify(r.data) === JSON.stringify(m); });
+  const x = JSON.stringify(_mntSinMarcas(m));
+  return !_mntRaw(key).some(function(r){ return r && r.id === m.id && JSON.stringify(r.data) === x; });
 }
 // A9 · ¿Hay en pantalla algo anotado que no está guardado? «Nueva» y ✏️ Abrir lo miran con la misma vara.
 function _mntRondaPorGuardar(){
@@ -25134,6 +25188,7 @@ const _MNT_SUBT = 'font-size:11px;font-weight:700;color:#0f766e;text-transform:u
 function renderMntRonda(){
   const fp = document.getElementById("fp-mntronda");
   if(!fp) return;
+  _mntAlReloj(true);   // punto 23
   const m = _mntRondaActual();
   const v = function(x){ return escapeHtml(x == null ? "" : String(x)); };
   const lista = mntHorometros(loadMntRondas(), loadMntTrabajos());
@@ -25168,6 +25223,7 @@ function renderMntRonda(){
 function renderMntTrabajo(){
   const fp = document.getElementById("fp-mnttrabajo");
   if(!fp) return;
+  _mntAlReloj(false);   // punto 23
   const m = _mntTrabActual();
   const v = function(x){ return escapeHtml(x == null ? "" : String(x)); };
   const pc = mntParadaHoras(m.horaInicio, m.horaFin);
@@ -29274,8 +29330,9 @@ function _labCorregir(tipo, lista, previos, nuevos, clave, llave){
   const kNuevas = new Set(nuevos.map(function(r){ return clave(r.data); }));
   const anul = _labAnulaciones(tipo).filter(function(a){ return a && a.data && !kNuevas.has(clave(a.data)); });
   const ya = new Set(anul.map(function(a){ return clave(a.data); }));
+  const enCola = _labClavesEnCola(tipo);
   previos.forEach(function(r){
-    if(!(r.synced || r.syncedAt)) return;   // nunca salió: no hay nada que anular en la hoja
+    if(!_labLlego(r, clave, enCola)) return;   // nunca salió: no hay nada que anular en la hoja (punto 5: ver _labLlego)
     const k = clave(r.data);
     if(ya.has(k)) return;
     ya.add(k);
@@ -29314,6 +29371,47 @@ function _labAnulacionesSalieron(tipo, lista, clave){
   if(!lista.length) return;
   const ido = new Set(lista.map(function(a){ return clave(a.data); }));
   _labAnulacionesGuardar(tipo, _labAnulaciones(tipo).filter(function(a){ return !(a && a.data && ido.has(clave(a.data))); }));
+}
+/* 2026-11-14 (punto 5 de la pauta del 12-11) · ¿LLEGÓ ALGUNA VEZ A LA HOJA? Al corregir la fecha, la sesión vieja sólo se anulaba si
+   sus registros seguían marcados como enviados (`synced`/`syncedAt`), y no lo están en dos casos: si se volvió a guardar con 💾 tras
+   enviarse (sus registros se rehacen sin enviar) o si su envío espera en la cola. La hoja se quedaba entonces con el análisis DOS
+   veces, con la fecha vieja y con la nueva. Cuenta como llegada: enviada, con `enHoja` (lo hereda al volver a guardarse:
+   _labHeredarEnHoja) o con un envío suyo en la cola (marca F3: `kind` = tipo, `keys` = claves de sesión). */
+function _labClavesEnCola(tipo){
+  const s = new Set();
+  _loadSyncQueue().forEach(function(it){
+    const m = it && it.mark;
+    if(m && m.kind === tipo && Array.isArray(m.keys)) m.keys.forEach(function(k){ s.add(String(k)); });
+  });
+  return s;
+}
+function _labLlego(r, clave, enCola){
+  return !!(r && (r.synced || r.syncedAt || r.enHoja || (r.data && enCola.has(String(clave(r.data))))));
+}
+/** Al volver a guardar una sesión con su MISMA clave, lo nuevo hereda que lo de antes llegó a la hoja. No guarda nada. */
+function _labHeredarEnHoja(tipo, lista, nuevos, clave){
+  const enCola = _labClavesEnCola(tipo), llegaron = new Set();
+  (lista || []).forEach(function(r){ if(r && r.data && _labLlego(r, clave, enCola)) llegaron.add(clave(r.data)); });
+  (nuevos || []).forEach(function(r){ if(r && r.data && llegaron.has(clave(r.data))) r.enHoja = true; });
+}
+/* Punto 5 (usuario: «Se queda como estaba») · 🗑 DE UNA CORRECCIÓN QUE NO SALIÓ. Borrar del equipo no toca la hoja (lo promete el
+   aviso de 🗑), pero la anulación de la fecha vieja seguía pendiente y salía con el siguiente envío: la hoja perdía el análisis
+   entero. Si la sesión borrada no llegó a la hoja, sus anulaciones pendientes (misma sesión) se retiran con ella. Devuelve las
+   retiradas. */
+function _labRetirarAnulDe(tipo, borrados, clave, mismaSesion){
+  const d0 = borrados && borrados[0] && borrados[0].data;
+  if(!d0 || !d0.sid) return [];
+  const enCola = _labClavesEnCola(tipo);
+  if(borrados.some(function(r){ return _labLlego(r, clave, enCola); })) return [];   // salió: su anulación salió con ella
+  const todas = _labAnulaciones(tipo);
+  const fuera = todas.filter(function(a){ return a && a.data && a.data.sid === d0.sid && mismaSesion(a.data, d0); });
+  if(fuera.length) _labAnulacionesGuardar(tipo, todas.filter(function(a){ return fuera.indexOf(a) === -1; }));
+  return fuera;
+}
+/** El aviso de 🗑 cuando además se retiró una anulación: qué sigue en la hoja como estaba. */
+function _labAvisoBorrado(fuera){
+  return "🗑 Sesión eliminada del historial local" + (fuera.length ? " · en la hoja sigue como estaba el análisis del "
+    + fuera.map(function(a){ return _labDescribir(a.data); }).join(" y del ") + ", que ya no se anula" : "");
 }
 
 /* 2026-11-14 (punto 4; usuario: «Repartir por sesiones») · LO PENDIENTE DE LABORATORIO VA EN VARIOS ENVÍOS SI NO CABE EN UNO. El GAS
@@ -29362,7 +29460,9 @@ async function _labEnviarPendiente(c){
     if(L.anul) payload.rows = payload.rows.concat(anul.filas);
     if(!payload.rows.length) continue;
     setSyncUI("pend", "Enviando " + n + " muestra(s)" + (lotes.length > 1 ? " · envío " + (i+1) + " de " + lotes.length : "") + "…");
-    const opts = { mark:{ kind:c.tipo, keys:L.claves } };   // F3: reconciliación al entregar desde cola
+    /* F3: reconciliación al entregar desde cola. Punto 5 · el envío que lleva las anulaciones lleva también SUS claves: si la sesión
+       vieja aún espera en la cola, _colaSolapa lo pone detrás —anulada antes de llegar, al llegar después volvería a la hoja—. */
+    const opts = { mark:{ kind:c.tipo, keys: L.anul ? L.claves.concat(anul.lista.map(function(a){ return c.clave(a.data); })) : L.claves } };
     const sent = await postPayload(payload, c.url, opts);
     if((sent || opts.outcome === "queued") && L.anul){ _labAnulacionesSalieron(c.tipo, anul.lista, c.clave); anulSalio = true; }
     if(sent){ _marcarEnviado(opts); muestras += n; sesiones += L.claves.length; continue; }
@@ -29905,6 +30005,7 @@ function saveMicLocal(){
   // algún registro nuevo y re-añade los nuevos. Otros formatos/fechas/corridas
   // quedan INTACTOS (conservan su estado synced). Editar una sesión (misma clave)
   // la actualiza; para registrar otro análisis igual usa 🧹 (rota el sid).
+  _labHeredarEnHoja("mic", list, newRecords, micSessionKey);   // punto 5 · lo que se rehace sigue contando como llegado
   const newKeys = new Set(newRecords.map(r=> micSessionKey(r.data)));
   list = list.filter(r=> !(r.data && newKeys.has(micSessionKey(r.data))));
   list = list.concat(newRecords);
@@ -30140,8 +30241,9 @@ function micDeleteSession(k){
   if(!rs.length) return;
   if(!confirm("¿Eliminar esta sesión del historial local ("+rs.length+" muestra(s))?\nSolo se borra del sistema; lo ya enviado a Google Sheets NO se elimina.")) return;
   _micSave(list.filter(r=> micSessionKey(r.data) !== k));
+  const _fuera = _labRetirarAnulDe("mic", rs, micSessionKey, function(a, b){ return a.departamento === b.departamento && a.formato === b.formato; });   // punto 5
   renderMicHist(); updateDots(); updateSyncUI(); buildGrid();
-  toast("🗑 Sesión eliminada del historial local","ok",3000);
+  toast(_labAvisoBorrado(_fuera),"ok",_fuera.length ? 7000 : 3000);
 }
 
 // ── Vista Factores ─────────────────────────────────────
@@ -31350,6 +31452,7 @@ function saveCalLocal(){
   // Reemplazo espejo de la hoja SOLO para la clave del formato activo: quita las
   // sesiones cuya clave coincide con la de algún registro nuevo y re-añade los
   // nuevos. Otros formatos quedan intactos (conservan su estado synced).
+  _labHeredarEnHoja("cal", list, newRecords, calSessionKey);   // punto 5
   const newKeys = new Set(newRecords.map(r=> calSessionKey(r.data)));
   list = list.filter(r=> !(r.data && newKeys.has(calSessionKey(r.data))));
   list = list.concat(newRecords);
@@ -31505,8 +31608,9 @@ function calDeleteSession(k){
   if(!rs.length) return;
   if(!confirm("¿Eliminar esta sesión del historial local ("+rs.length+" muestra(s))?\nSolo se borra del sistema; lo ya enviado a Google Sheets NO se elimina.")) return;
   _calSave(list.filter(r=> calSessionKey(r.data)!==k));
+  const _fuera = _labRetirarAnulDe("cal", rs, calSessionKey, function(a, b){ return a.departamento === b.departamento && a.formato === b.formato; });   // punto 5
   renderCalHist(); updateDots(); updateSyncUI(); buildGrid();
-  toast("🗑 Sesión eliminada del historial local","ok",3000);
+  toast(_labAvisoBorrado(_fuera),"ok",_fuera.length ? 7000 : 3000);
 }
 
 // ── Vista Rangos ───────────────────────────────────────
@@ -32007,6 +32111,7 @@ function savePatLocal(){
     list = _c.lista; _anul = _c.anul;
   }
   // Reemplazo espejo de la hoja: quita la sesión cuya clave coincide y re-añade.
+  _labHeredarEnHoja("pat", list, newRecords, patSessionKey);   // punto 5
   const newKeys = new Set(newRecords.map(r=> patSessionKey(r.data)));
   list = list.filter(r=> !(r.data && newKeys.has(patSessionKey(r.data))));
   list = list.concat(newRecords);
@@ -32129,8 +32234,9 @@ function patDeleteSession(k){
   if(!rs.length) return;
   if(!confirm("¿Eliminar esta sesión del historial local ("+rs.length+" muestra(s))?\nSolo se borra del sistema; lo ya enviado a Google Sheets NO se elimina.")) return;
   _patSave(list.filter(r=> patSessionKey(r.data)!==k));
+  const _fuera = _labRetirarAnulDe("pat", rs, patSessionKey, function(){ return true; });   // punto 5 (en Patología la sesión es sólo su número)
   renderPatHist(); updateDots(); updateSyncUI(); buildGrid();
-  toast("🗑 Sesión eliminada del historial local","ok",3000);
+  toast(_labAvisoBorrado(_fuera),"ok",_fuera.length ? 7000 : 3000);
 }
 
 // ── Vista Factores (no aplica) ─────────────────────────
@@ -35902,6 +36008,12 @@ function _allAppStorageKeys(){
    nombres de TQ que sólo existen local) y se puede restaurar después.
 ══════════════════════════════════════════ */
 const BACKUP_VERSION = 1;
+/* 2026-11-14 (punto 26 de la pauta del 12-11; usuario: «Preguntar si la copia está») · LA APP NO SABE SI LA DESCARGA LLEGÓ. `a.click()`
+   sólo la PIDE: el navegador puede bloquearla (descargas automáticas, una tablet) o quien usa el equipo cancelarla, y exportBackup
+   devolvía «hecho» igual. Importar sobrescribía fiándose de eso: sin copia de verdad, lo sobrescrito se perdía. Ahora exportar dice
+   «revisa que esté en Descargas» (no «exportado») e importar, tras pedir la copia, pregunta si está antes de tocar nada. Éste es el
+   nombre del último archivo pedido, para decir cuál buscar. */
+let _respaldoNombre = "";
 
 function exportBackup(){
   try{
@@ -35926,12 +36038,12 @@ function exportBackup(){
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "fichas-larv-backup_" + today() + "_" + dump.count + "items.json";
+    a.download = _respaldoNombre = "fichas-larv-backup_" + today() + "_" + dump.count + "items.json";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url), 1500);
-    toast("📥 Backup exportado: "+dump.count+" elemento(s)","ok",4000);
+    toast("📥 Descargando la copia «"+_respaldoNombre+"» ("+dump.count+" elemento(s)): revisa que esté en Descargas","ok",7000);   // punto 26
     return true;
   }catch(err){
     console.error("[backup] export error:", err);
@@ -36016,6 +36128,12 @@ function importBackup(file){
     if(_flushingQueue){ toast("Hay un envío de la cola en curso: importa cuando termine.","warn",6000); return; }
     // A13 (usuario: «Copia automática antes») · Lo pendiente creado después del respaldo se sobrescribe: sin copia no se toca nada.
     if(!exportBackup()){ toast("No se importó nada: falta la copia de lo que hay ahora.","err",8000); return; }
+    // Punto 26 · pedirla no es tenerla: se pregunta, y sin un «sí» no se toca nada.
+    if(!confirm("¿Ya está en Descargas la copia de lo que hay ahora?\n\nBusca «" + _respaldoNombre + "».\n\n"
+      + "Aceptar: se importa el respaldo.\nCancelar: no se importa nada (si no apareció, el navegador pudo bloquearla: vuelve a intentarlo, o guárdala antes con 📥 Exportar todo).")){
+      toast("No se importó nada: sin la copia de lo que hay ahora, no se sobrescribe.","warn",8000);
+      return;
+    }
     const r = _aplicarRespaldo(dump.items, allowedKeys);
     if(!r){ toast("No se importó nada: no cabe en este navegador. Todo queda como estaba.","err",8000); return; }
     try{ _invalidateFotosCache(); }catch(_){}
